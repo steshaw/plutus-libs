@@ -15,14 +15,15 @@ module Cooked.MockChain.Monad where
 import Control.Arrow (second)
 import Control.Monad.Reader
 import Control.Monad.Trans.Control
+import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
 import Data.Kind (Type)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromJust)
-import Data.Void
 import qualified Ledger as Pl
 import qualified Ledger.Credential as Pl
+import qualified Ledger.TimeSlot as Pl
 import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator, validatorAddress)
 import qualified PlutusTx as Pl (FromData)
 
@@ -56,7 +57,7 @@ class (MonadFail m) => MonadBlockChain m where
   utxosSuchThat ::
     (Pl.FromData a) =>
     Pl.Address ->
-    (Maybe a -> Pl.Value -> Bool) ->
+    UtxoPredicate a ->
     m [(SpendableOut, Maybe a)]
 
   -- | Returns an output given a reference to it
@@ -86,15 +87,15 @@ class (MonadFail m) => MonadBlockChain m where
   awaitTime :: Pl.POSIXTime -> m Pl.POSIXTime
 
 -- | Calls 'validateTxSkel' with a skeleton that is set with some specific options.
-validateTxConstrOpts :: (MonadBlockChain m) => TxOpts -> [Constraint] -> m Pl.TxId
+validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => TxOpts -> constraints -> m Pl.TxId
 validateTxConstrOpts opts = validateTxSkel . txSkelOpts opts
 
 -- | Calls 'validateTx' with the default set of options and no label.
-validateTxConstr :: (MonadBlockChain m) => [Constraint] -> m Pl.TxId
+validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => constraints -> m Pl.TxId
 validateTxConstr = validateTxSkel . txSkel
 
 -- | Calls 'validateTxSkel' with the default set of options but passes an arbitrary showable label to it.
-validateTxConstrLbl :: (Show lbl, MonadBlockChain m) => lbl -> [Constraint] -> m Pl.TxId
+validateTxConstrLbl :: (Show lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.TxId
 validateTxConstrLbl lbl = validateTxSkel . txSkelLbl lbl
 
 spendableRef :: (MonadBlockChain m) => Pl.TxOutRef -> m SpendableOut
@@ -106,11 +107,22 @@ spendableRef txORef = do
 -- This is just a simpler variant of 'utxosSuchThat'. If you care about staking credentials
 -- you must use 'utxosSuchThat' directly.
 pkUtxosSuchThat ::
+  forall a m.
   (MonadBlockChain m, Pl.FromData a) =>
   Pl.PubKeyHash ->
-  (Maybe a -> Pl.Value -> Bool) ->
+  UtxoPredicate a ->
   m [(SpendableOut, Maybe a)]
 pkUtxosSuchThat pkh = utxosSuchThat (Pl.Address (Pl.PubKeyCredential pkh) Nothing)
+
+-- | Select public-key UTxO's that do not contain some datum nor staking address.
+-- This is just a simpler variant of 'pkUtxosSuchThat'.
+pkUtxosSuchThatValue ::
+  (MonadBlockChain m) =>
+  Pl.PubKeyHash ->
+  (Pl.Value -> Bool) ->
+  m [SpendableOut]
+pkUtxosSuchThatValue pkh predi =
+  map fst <$> pkUtxosSuchThat @() pkh (valueSat predi)
 
 -- | Script UTxO's always have a datum, hence, can be selected easily with
 --  a simpler variant of 'utxosSuchThat'. It is important to pass a value for type variable @a@
@@ -118,6 +130,7 @@ pkUtxosSuchThat pkh = utxosSuchThat (Pl.Address (Pl.PubKeyCredential pkh) Nothin
 scriptUtxosSuchThat ::
   (MonadBlockChain m, Pl.FromData (Pl.DatumType tv)) =>
   Pl.TypedValidator tv ->
+  -- | Slightly different from 'UtxoPredicate': here we're guaranteed to have a datum present.
   (Pl.DatumType tv -> Pl.Value -> Bool) ->
   m [(SpendableOut, Pl.DatumType tv)]
 scriptUtxosSuchThat v predicate =
@@ -136,7 +149,7 @@ outFromOutRef outref = do
 
 -- | Return all utxos belonging to a pubkey
 pkUtxos :: (MonadBlockChain m) => Pl.PubKeyHash -> m [SpendableOut]
-pkUtxos pkh = map fst <$> pkUtxosSuchThat @_ @Void pkh (const $ const True)
+pkUtxos pkh = pkUtxosSuchThatValue pkh (const True)
 
 -- | Return all utxos belonging to a pubkey, but keep them as 'Pl.TxOut'. This is
 --  for internal use.
@@ -187,6 +200,9 @@ class (MonadBlockChain m) => MonadMockChain m where
 
   -- | Returns the current set of signing wallets.
   askSigners :: m (NE.NonEmpty Wallet)
+
+  -- | Returns the slot configuration of the mock chain.
+  slotConfig :: m Pl.SlotConfig
 
 -- | Runs a given block of computations signing transactions as @w@.
 as :: (MonadMockChain m) => m a -> Wallet -> m a
@@ -250,6 +266,7 @@ f `unliftOn` act = liftWith (\run -> f (run act)) >>= restoreT . pure
 instance (MonadTransControl t, MonadMockChain m, MonadFail (t m)) => MonadMockChain (AsTrans t m) where
   signingWith wallets (AsTrans act) = AsTrans $ signingWith wallets `unliftOn` act
   askSigners = lift askSigners
+  slotConfig = lift slotConfig
 
 instance (MonadTransControl t, MonadModal m, Monad (t m), StT t () ~ ()) => MonadModal (AsTrans t m) where
   type Action (AsTrans t m) = Action m

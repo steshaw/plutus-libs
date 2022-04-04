@@ -5,7 +5,7 @@ cabal-version: 2.4
 -- see: https://github.com/sol/hpack
 
 name:           cooked-validators
-version:        0.0.0
+version:        0.2.0
 build-type:     Simple
 extra-source-files:
     README.md
@@ -13,6 +13,7 @@ extra-source-files:
 library
   exposed-modules:
       Cooked.MockChain
+      Cooked.MockChain.Constraints
       Cooked.MockChain.Monad
       Cooked.MockChain.Monad.Contract
       Cooked.MockChain.Monad.Direct
@@ -20,6 +21,7 @@ library
       Cooked.MockChain.RawUPLC
       Cooked.MockChain.Testing
       Cooked.MockChain.Time
+      Cooked.MockChain.UtxoPredicate
       Cooked.MockChain.UtxoState
       Cooked.MockChain.UtxoState.Testing
       Cooked.MockChain.Wallet
@@ -79,6 +81,7 @@ test-suite spec
       Cooked.MockChain.Monad.StagedSpec
       Cooked.MockChain.UtxoStateSpec
       Cooked.MockChain.WalletSpec
+      Cooked.OutputReorderingSpec
       Cooked.QuickValueSpec
       Paths_cooked_validators
   hs-source-dirs:
