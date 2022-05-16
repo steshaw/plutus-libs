@@ -285,10 +285,10 @@ runTransactionValidation s slotCfg ix reqSigners signers tx =
       -- This should not go wrong and if it does, its unrecoverable, so we stick with `error`
       -- to keep this function pure.
       cardanoIndex = either (error . show) id $ Pl.fromPlutusIndex ix
-      cardanoTx = either (error . show) id $ Pl.fromPlutusTx cardanoIndex reqSigners tx
+      cardanoTx = either (error . show) id $ Pl.fromPlutusTx reqSigners tx
 
       -- Finally, we get to check that the Cardano.API equivalent of 'tx' has no validation errors
-      e2 =
+      e2 = (Pl.Phase1,) <$>
         Pl.hasValidationErrors
           (fromIntegral s)
           cardanoIndex
@@ -448,15 +448,15 @@ setFeeAndValidRange bPol w (Pl.UnbalancedTx tx0 reqSigs0 uindex slotRange) = do
       Int ->
       Pl.Value ->
       [Pl.PaymentPubKeyHash] ->
-      Pl.UTxO Pl.EmulatorEra ->
+      Pl.UTxOState Pl.EmulatorEra ->
       Pl.Tx ->
       MockChainT m Pl.Value
     calcFee n fee reqSigs cUtxoIndex tx = do
       let tx1 = tx {Pl.txFee = fee}
       attemptedTx <- balanceTxFromAux bPol BalCalcFee w tx1
-      case Pl.evaluateTransactionFee cUtxoIndex reqSigs attemptedTx of
+      case Pl.evaluateTransactionFee reqSigs attemptedTx of
         -- necessary to capture script failure for failed cases
-        Left (Left err@(Pl.Phase2, Pl.ScriptFailure _)) -> throwError $ MCEValidationError err
+        -- Left (Left err@(Pl.Phase2, Pl.ScriptFailure _)) -> throwError $ MCEValidationError err
         Left err -> throwError $ FailWith $ "calcFee: " ++ show err
         Right newFee
           | newFee == fee -> pure newFee -- reached fixpoint
