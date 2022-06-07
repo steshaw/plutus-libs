@@ -1,7 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE TypeApplications #-}
 
-module Cooked.OutputReorderingSpec (spec) where
+module Cooked.OutputReorderingSpec (tests) where
 
 import Cooked.MockChain
 import Cooked.Tx.Constraints
@@ -10,17 +9,23 @@ import Data.Either.Combinators (rightToMaybe)
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
 import qualified Ledger.Credential as Pl
-import Test.Hspec
+import Test.Tasty
+import Test.Tasty.HUnit
 
-spec :: SpecWith ()
-spec = do
-  describe "outputs follow the order of the 'paysPK' constraints" $ do
-    it "ordering two outputs" $
-      genTx (skel (wallet 2) (wallet 3))
-        `shouldSatisfy` maybe False (firstRecipientsAre (wallet 2) (wallet 3))
-    it "reversing the ordering of two outputs" $
-      genTx (skel (wallet 3) (wallet 2))
-        `shouldNotSatisfy` maybe False (firstRecipientsAre (wallet 2) (wallet 3))
+tests :: [TestTree]
+tests =
+  [ testCase "ordering two outputs" $
+      assertBool "doesn't satisfy" $
+        maybe False (firstRecipientsAre (wallet 2) (wallet 3)) $
+          genTx
+            (skel (wallet 2) (wallet 3)),
+    testCase
+      "reversing the ordering of two outputs"
+      $ assertBool "satisfies" $
+        not $
+          maybe False (firstRecipientsAre (wallet 2) (wallet 3)) $
+            genTx (skel (wallet 3) (wallet 2))
+  ]
 
 -- | Generates the transaction corresponding to a 'TxSkel' under the default
 -- distribution
@@ -31,14 +36,11 @@ genTx = fmap fst . rightToMaybe . runMockChain . generateTx'
 -- the ordering of the outputs
 skel :: Wallet -> Wallet -> TxSkel
 skel w1 w2 =
-  TxSkel
-    { txLabel = Nothing @(),
-      txOpts = def {forceOutputOrdering = True},
-      txConstraints =
-        [ paysPK (walletPKHash w1) (Pl.lovelaceValueOf 1_000),
-          paysPK (walletPKHash w2) (Pl.lovelaceValueOf 1_000)
-        ]
-    }
+  txSkelOpts
+    (def {forceOutputOrdering = True})
+    [ paysPK (walletPKHash w1) (Pl.lovelaceValueOf 1_000),
+      paysPK (walletPKHash w2) (Pl.lovelaceValueOf 1_000)
+    ]
 
 -- | Checks that the first two outputs in a transaction are payments to the two
 -- given wallets

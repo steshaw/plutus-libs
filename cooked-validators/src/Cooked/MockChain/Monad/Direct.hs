@@ -339,7 +339,7 @@ generateTx' skel@(TxSkel _ _ constraintsSpec) = do
         foldl
           (flip txAddSignature)
           -- optionally apply a transformation to a balanced tx before sending it in.
-          (applyRawModTx (unsafeModTx opts) balancedTx)
+          (applyRawModOnBalancedTx (unsafeModTx opts) balancedTx)
           (NE.toList signers)
   where
     opts = txOpts skel

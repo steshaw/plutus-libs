@@ -12,10 +12,12 @@ import Cooked.MockChain.Monad.Staged
 import Cooked.MockChain.UtxoState
 import Cooked.MockChain.Wallet
 import Data.Default
+import qualified Data.Text as T
 import Debug.Trace
+import Ledger (ScriptError (EvaluationError))
 import Ledger.Index (ValidationError (ScriptFailure))
-import qualified Test.HUnit.Lang as HU
 import qualified Test.QuickCheck as QC
+import qualified Test.Tasty.HUnit as HU
 
 -- | This module provides a common interface for HUnit and QuickCheck tests.
 -- We do so by abstracting uses of 'HU.Assertion' and 'QC.Property' for @(IsProp prop) => prop@,
@@ -125,6 +127,12 @@ isCekEvaluationFailure :: (IsProp prop) => MockChainError -> prop
 isCekEvaluationFailure (MCEValidationError (_, ScriptFailure _)) = testSuccess
 isCekEvaluationFailure e = testFailureMsg $ "Expected 'CekEvaluationFailure', got: " ++ show e
 
+-- | Similar to 'isCekEvaluationFailure', but enables us to check for a specific error message in the error.
+isCekEvaluationFailureWithMsg :: (IsProp prop) => (String -> Bool) -> MockChainError -> prop
+isCekEvaluationFailureWithMsg f (MCEValidationError (_, ScriptFailure (EvaluationError msgs _)))
+  | any (f . T.unpack) msgs = testSuccess
+isCekEvaluationFailureWithMsg _ e = testFailureMsg $ "Expected 'CekEvaluationFailure' with specific messages, got: " ++ show e
+
 -- | Ensure that all results produced by the set of traces encoded by the 'StagedMockChain'
 -- satisfy the given predicate. If you wish to build custom predicates
 -- you can use 'testSatisfiesFrom'' directly and see 'testBinaryRelatedBy' as an example.
@@ -225,13 +233,11 @@ instance IsProp HU.Assertion where
   testCounterexample msg = maybe testSuccess (E.throw . adjustMsg) <=< assertionToMaybe
     where
       joinMsg :: String -> String
-      joinMsg rest = msg ++ "; " ++ rest
+      joinMsg rest = msg ++ ";\n" ++ rest
 
       adjustMsg :: HU.HUnitFailure -> HU.HUnitFailure
-      adjustMsg (HU.HUnitFailure loc (HU.Reason txt)) =
-        HU.HUnitFailure loc (HU.Reason $ joinMsg txt)
-      adjustMsg (HU.HUnitFailure loc (HU.ExpectedButGot pref x y)) =
-        HU.HUnitFailure loc (HU.ExpectedButGot (maybe (Just msg) (Just . joinMsg) pref) x y)
+      adjustMsg (HU.HUnitFailure loc txt) =
+        HU.HUnitFailure loc (joinMsg txt)
 
   testFailure = HU.assertFailure ""
   testFailureMsg = HU.assertFailure

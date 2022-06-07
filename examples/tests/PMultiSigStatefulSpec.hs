@@ -11,12 +11,15 @@ module PMultiSigStatefulSpec where
 
 import Control.Arrow (second)
 import Control.Monad
+import qualified Cooked.Attack as Cooked
+import Cooked.Ltl
 import Cooked.MockChain
 import Cooked.Tx.Constraints
 import Data.Default
 import Data.Either (isLeft, isRight)
 import Data.Function (on)
 import Data.List (nub, nubBy)
+import Data.Typeable
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
 import qualified Ledger.Typed.Scripts as Pl
@@ -68,7 +71,7 @@ pkTable = AssocMap.fromList $ map (\w -> (walletPKHash w, walletPK w)) knownWall
 --  us identify what that transaction is doing without carefully inspecting its
 --  constraints.
 data ProposalSkel = ProposalSkel Integer Payment
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | Next, we can create proposals, which are simply an accumulator with no signees
 mkProposal :: MonadBlockChain m => Integer -> Payment -> m (Params, Pl.TxOutRef)
@@ -121,9 +124,6 @@ mkSign params pmt sk = do
     mkSignLockedCost :: Pl.Value
     mkSignLockedCost = Pl.lovelaceValueOf 1
 
-minAda :: Pl.Value
-minAda = Pl.lovelaceValueOf 2000000
-
 mkCollect :: MonadMockChain m => Payment -> Params -> m ()
 mkCollect thePayment params = signs (wallet 1) $ do
   [initialProp] <- scriptUtxosSuchThat (pmultisig params) isProposal
@@ -174,23 +174,24 @@ tests =
     "PMultiSigStateful"
     [ sampleTrace1,
       sampleGroup1,
-      datumHijackingTrace
+      datumHijackingTrace,
+      datumHijackingTrace'
     ]
 
 sampleTrace1 :: TestTree
 sampleTrace1 =
-  testCase "Example Trivial Trace" $ testSucceeds mtrace
+  testCase "Example Trivial Trace" $ testSucceeds exampleMtrace
+
+exampleMtrace :: MonadMockChain m => m ()
+exampleMtrace = do
+  (params, tokenOutRef) <- mkProposal 2 thePayment `as` wallet 1
+  mkSign params thePayment (walletSK $ wallet 1) `as` wallet 1
+  mkSign params thePayment (walletSK $ wallet 2) `as` wallet 2
+  mkSign params thePayment (walletSK $ wallet 3) `as` wallet 3
+  mkCollect thePayment params
+  mkPay thePayment params tokenOutRef
   where
-    mtrace :: MonadMockChain m => m ()
-    mtrace = do
-      (params, tokenOutRef) <- mkProposal 2 thePayment `as` wallet 1
-      mkSign params thePayment (walletSK $ wallet 1) `as` wallet 1
-      mkSign params thePayment (walletSK $ wallet 2) `as` wallet 2
-      mkSign params thePayment (walletSK $ wallet 3) `as` wallet 3
-      mkCollect thePayment params
-      mkPay thePayment params tokenOutRef
-      where
-        thePayment = Payment 4200000 (walletPKHash $ last knownWallets)
+    thePayment = Payment 4200000 (walletPKHash $ last knownWallets)
 
 qcIsRight :: (Show a) => Either a b -> QC.Property
 qcIsRight (Left a) = QC.counterexample (show a) False
@@ -297,9 +298,15 @@ dupTokenAttack sOut (parms, tokenRef) (TxSkel l opts cs) =
              ]
 
 data DupTokenAttacked where
-  DupTokenAttacked :: (Show x) => Maybe x -> DupTokenAttacked
+  DupTokenAttacked :: (Typeable x, Show x, Eq x) => Maybe x -> DupTokenAttacked
 
 deriving instance Show DupTokenAttacked
+
+instance Eq DupTokenAttacked where
+  DupTokenAttacked m1 == DupTokenAttacked m2 =
+    case m1 ~*~? m2 of
+      Just HRefl -> m1 == m2
+      Nothing -> False
 
 -- ** Datum Hijacking Attack
 
@@ -346,3 +353,28 @@ mkFakeCollect thePayment params = do
                  (HJ.Accumulator (trPayment thePayment) (signPk . snd <$> signatures))
                  (paymentValue thePayment <> sOutValue (fst initialProp) <> signatureValues)
              ]
+
+-- * Datum Hijacking Attack from 'Cooked.Attack'
+
+datumHijackingTrace' :: TestTree
+datumHijackingTrace' =
+  testCase "not vulnerable to the automatic datum hijacking attack" $
+    testFailsFrom'
+      isCekEvaluationFailure
+      def
+      datumHijacking'
+
+datumHijacking' :: MonadModalMockChain m => m ()
+datumHijacking' =
+  somewhere
+    ( Cooked.datumHijackingAttack @PMultiSig
+        -- We'll try to attack the collecting transaction. This means that the
+        -- output in question uses the 'Accumulator' datum, but with a nonempty
+        -- list of signers.
+        ( \_ d _ -> case d of
+            Accumulator _ (_ : _) -> True
+            _ -> False
+        )
+        (0 ==) -- if there is more than one matching output (which should not happen here), steal the first
+    )
+    exampleMtrace

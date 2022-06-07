@@ -101,8 +101,41 @@ txAddSignature w = Pl.addSignature' (walletSK w)
 -- the underlying plutus definitions to make it easer when we have
 -- to plug our own, if we ever have the need
 
-newtype InitialDistribution = InitialDistribution {distribution :: M.Map Wallet Pl.Value}
+-- | Describes the initial distribution of /UTxOs/ per wallet. This is important since
+--  transaction validation must specify a /collateral/, hence, wallets must posses more
+--  than one UTxO to begin with in order to execute a transaction and have some collateral
+--  option. The @txCollateral@ is transfered to the node operator in case the transaction
+--  fails to validate.
+--
+--  An initial distribution defined by:
+--
+--  > i0 = InitialDistribution $ M.fromList
+--  >        [ (wallet 1 , [ Pl.lovelaveValueOf 42000000
+--  >                      , Pl.lovelaceValueOf 2000000 <> quickValue "TOK" 1
+--  >                      ]
+--  >        , (wallet 2 , [Pl.lovelaveValueOf 10000000])
+--  >        , (wallet 3 , [Pl.lovelaceValueOf 10000000 <> permanentValue "XYZ" 10])
+--  >        ]
+--
+--  Specifies a starting state where @wallet 1@ contains two /UTxOs/, one with 42 Ada
+--  and one with 2 Ada and one "TOK" token; @wallet 2@ contains a single /UTxO/ with 10 Ada and
+--  @wallet 3@ has 10 Ada and a permanent value. Check #quickvalues for more on quick
+--  and permanent values. (Remember: 1 Ada = 1000000 Lovelace)
+--
+--  Check the corresponding @Default InitialDistribution@ instance for the default value.
+newtype InitialDistribution = InitialDistribution {distribution :: M.Map Wallet [Pl.Value]}
   deriving (Eq, Show)
+
+-- | An initial distribution is valid if all utxos being created contain at least
+--  a minimum amount of Ada: 'minAda'.
+validInitialDistribution :: InitialDistribution -> Bool
+validInitialDistribution = all (all hasMinAda . snd) . M.toList . distribution
+  where
+    hasMinAda vl = minAda `Pl.leq` vl
+
+-- | Proxy to 'Pl.minAdaTxOut' as a 'Pl.Value'
+minAda :: Pl.Value
+minAda = Pl.toValue Pl.minAdaTxOut
 
 instance Semigroup InitialDistribution where
   (InitialDistribution i) <> (InitialDistribution j) = InitialDistribution $ M.unionWith (<>) i j
@@ -111,49 +144,28 @@ instance Monoid InitialDistribution where
   mempty = InitialDistribution M.empty
 
 instance Default InitialDistribution where
-  def = InitialDistribution $ M.fromList $ zip knownWallets (repeat defLovelace)
+  def = InitialDistribution $ M.fromList $ zip knownWallets (repeat $ replicate 10 defLovelace)
     where
       defLovelace = Pl.lovelaceValueOf 100_000_000
 
-distributionFromList :: [(Wallet, Pl.Value)] -> InitialDistribution
+distributionFromList :: [(Wallet, [Pl.Value])] -> InitialDistribution
 distributionFromList = InitialDistribution . M.fromList
-
-initialTxFor :: InitialDistribution -> Pl.Tx
-initialTxFor initDist =
-  mempty
-    { Pl.txMint = mconcat (map snd initDist'),
-      Pl.txOutputs = map (\wv -> Pl.TxOut (walletAddress $ fst wv) (snd wv) Nothing) initDist'
-    }
-  where
-    initDist' = M.toList $ distribution initDist
-
--- "Quick" currency is a convenience to manipulate assets that are supposed to
--- be already in the wild when running a mock chain. For example, a market
--- maker would exchange Ada against other assets called "coins". Defining a
--- minting policy for those coins is tedious and not interesting. The following
--- functions make it easy to manipulate such assets identified by a token name.
---
--- For example, `runMockChainWithDistribution (initialDistribution' [wallet 1,
--- quickValue "coin" 50])` provides 50 coins to wallet 1 alongside the default
--- 100_000_000 lovelace in the initial state.
 
 -- | Extension of the default initial distribution with additional value in
 -- some wallets.
-initialDistribution' :: [(Wallet, Pl.Value)] -> InitialDistribution
+initialDistribution' :: [(Wallet, [Pl.Value])] -> InitialDistribution
 initialDistribution' = (def <>) . distributionFromList
 
--- | The currency symbol of the "quick" is empty. Like Ada.
-quickCurrencySymbol :: Pl.CurrencySymbol
-quickCurrencySymbol = Pl.CurrencySymbol ""
+initialTxFor :: InitialDistribution -> Pl.Tx
+initialTxFor initDist
+  | not $ validInitialDistribution initDist =
+    error "Not all UTxOs have at least minAda; this initial distribution is unusable"
+  | otherwise =
+    mempty
+      { Pl.txMint = mconcat (map (mconcat . snd) initDist'),
+        Pl.txOutputs = concatMap (\(w, vs) -> map (initUtxosFor w) vs) initDist'
+      }
+  where
+    initUtxosFor w v = Pl.TxOut (walletAddress w) v Nothing
 
--- | Token name of a "quick" asset class
-quickTokenName :: String -> Pl.TokenName
-quickTokenName = Pl.TokenName . Pl.stringToBuiltinByteString
-
--- | "Quick" asset class from a token name
-quickAssetClass :: String -> Pl.AssetClass
-quickAssetClass = curry Pl.AssetClass quickCurrencySymbol . quickTokenName
-
--- | Constructor for "quick" values from token name and amount
-quickValue :: String -> Integer -> Pl.Value
-quickValue = Pl.assetClassValue . quickAssetClass
+    initDist' = M.toList $ distribution initDist
