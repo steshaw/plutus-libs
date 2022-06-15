@@ -17,6 +17,8 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Writer
+import Cooked.Attack
+import Cooked.Ltl
 import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
@@ -51,7 +53,7 @@ class (MonadFail m) => MonadBlockChain m where
   --  which inputs to add in case the output-side of the balancing equation is bigger.
   --
   --  The 'TxSkel' receives a 'TxOpts' record with a number of options to customize how validation works.
-  validateTxSkel :: TxSkel -> m Pl.TxId
+  validateTxSkel :: TxSkel -> m Pl.CardanoTx
 
   -- | Returns a list of spendable outputs that belong to a given address and satisfy a given predicate;
   --  Additionally, return the datum present in there if it happened to be a script output. It is important
@@ -89,15 +91,15 @@ class (MonadFail m) => MonadBlockChain m where
   awaitTime :: Pl.POSIXTime -> m Pl.POSIXTime
 
 -- | Calls 'validateTxSkel' with a skeleton that is set with some specific options.
-validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => TxOpts -> constraints -> m Pl.TxId
+validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => TxOpts -> constraints -> m Pl.CardanoTx
 validateTxConstrOpts opts = validateTxSkel . txSkelOpts opts
 
 -- | Calls 'validateTx' with the default set of options and no label.
-validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => constraints -> m Pl.TxId
+validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => constraints -> m Pl.CardanoTx
 validateTxConstr = validateTxSkel . txSkel
 
 -- | Calls 'validateTxSkel' with the default set of options but passes an arbitrary showable label to it.
-validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.TxId
+validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.CardanoTx
 validateTxConstrLbl lbl = validateTxSkel . txSkelLbl lbl
 
 spendableRef :: (MonadBlockChain m) => Pl.TxOutRef -> m SpendableOut
@@ -213,6 +215,11 @@ as ma w = signingWith (w NE.:| []) ma
 -- | Flipped version of 'as'
 signs :: (MonadMockChain m) => Wallet -> m a -> m a
 signs = flip as
+
+-- ** Modalities
+
+-- | A modal mock chain is a mock chain that allows us to use LTL modifications with 'Attack's
+type MonadModalMockChain m = (MonadMockChain m, MonadModal m, Modification m ~ Attack)
 
 -- ** Deriving further 'MonadBlockChain' instances
 
