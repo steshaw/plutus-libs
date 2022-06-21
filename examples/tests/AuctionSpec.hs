@@ -11,9 +11,11 @@ import Control.Applicative
 import Control.Arrow
 import Cooked.Attack
 import Cooked.Currencies
+import Cooked.Ltl
 import Cooked.MockChain
 import Cooked.Tx.Constraints
 import Data.Default
+import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Ledger as L
 import qualified Ledger.Ada as Ada
@@ -170,14 +172,15 @@ attacks =
     "Attacks"
     [ testCase "token duplication" $
         testFailsFrom'
-          isCekEvaluationFailure
+          -- Ensure that the trace fails and gives back an error message satisfying a specific condition
+          (isCekEvaluationFailureWithMsg ("not minting or burning" `isPrefixOf`))
           testInit
           tryDupTokens,
       testCase "datum hijacking" $
         testFailsFrom'
           isCekEvaluationFailure
           testInit
-          tryDupTokens
+          tryDatumHijack
     ]
 
 -- * Comparing two outcomes with 'testBinaryRelatedBy'

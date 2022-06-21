@@ -12,6 +12,7 @@ module Cooked.AttackSpec (tests) where
 
 import Control.Monad
 import Cooked.Attack
+import Cooked.Ltl
 import Cooked.MockChain
 import Cooked.Tx.Constraints
 import Data.Default
@@ -47,7 +48,6 @@ mkCarefulPolicy tName allowedAmount _ ctx
   | otherwise = Pl.trace "tried to mint wrong amount" False
   where
     txi = L.scriptContextTxInfo ctx
-    L.Minting me = L.scriptContextPurpose ctx
 
     amnt :: Maybe Integer
     amnt = case L.flattenValue (L.txInfoMint txi) of

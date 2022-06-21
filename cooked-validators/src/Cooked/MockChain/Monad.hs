@@ -14,11 +14,15 @@ module Cooked.MockChain.Monad where
 
 import Control.Arrow (second)
 import Control.Monad.Reader
+import Control.Monad.State
 import Control.Monad.Trans.Control
+import Control.Monad.Trans.Writer
+import Cooked.Attack
+import Cooked.Ltl
 import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
-import Data.Kind (Type)
+import Data.Kind
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromJust)
 import qualified Ledger as Pl
@@ -49,7 +53,7 @@ class (MonadFail m) => MonadBlockChain m where
   --  which inputs to add in case the output-side of the balancing equation is bigger.
   --
   --  The 'TxSkel' receives a 'TxOpts' record with a number of options to customize how validation works.
-  validateTxSkel :: TxSkel -> m Pl.TxId
+  validateTxSkel :: TxSkel -> m Pl.CardanoTx
 
   -- | Returns a list of spendable outputs that belong to a given address and satisfy a given predicate;
   --  Additionally, return the datum present in there if it happened to be a script output. It is important
@@ -87,15 +91,15 @@ class (MonadFail m) => MonadBlockChain m where
   awaitTime :: Pl.POSIXTime -> m Pl.POSIXTime
 
 -- | Calls 'validateTxSkel' with a skeleton that is set with some specific options.
-validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => TxOpts -> constraints -> m Pl.TxId
+validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => TxOpts -> constraints -> m Pl.CardanoTx
 validateTxConstrOpts opts = validateTxSkel . txSkelOpts opts
 
 -- | Calls 'validateTx' with the default set of options and no label.
-validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => constraints -> m Pl.TxId
+validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => constraints -> m Pl.CardanoTx
 validateTxConstr = validateTxSkel . txSkel
 
 -- | Calls 'validateTxSkel' with the default set of options but passes an arbitrary showable label to it.
-validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.TxId
+validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.CardanoTx
 validateTxConstrLbl lbl = validateTxSkel . txSkelLbl lbl
 
 spendableRef :: (MonadBlockChain m) => Pl.TxOutRef -> m SpendableOut
@@ -214,26 +218,8 @@ signs = flip as
 
 -- ** Modalities
 
--- | A modal mock chain is a mock chain that also supports modal modifications of transactions.
--- Hence, modal actions are 'TxSkel's.
-type MonadModalMockChain m = (MonadBlockChain m, MonadMockChain m, MonadModal m, Action m ~ TxSkel)
-
--- | Monads supporting modifying a certain type of actions with modalities. The 'somewhere'
--- and 'everywhere' functions receive an argument of type @Action m -> Maybe (Action m)@ because
--- we want (a) all branches of @somewhere f tree@ to have a guarantee that they had exactly one action
--- modified by @f@ and (b) we want 'everywhere' to be the dual of 'somewhere', so its type must be the same.
-class (Monad m) => MonadModal m where
-  type Action m :: Type
-
-  -- | Applies a modification to all possible actions in a tree. If a modification
-  -- cannot be applied anywhere, this is the identity: @everywhere (const Nothing) x == x@.
-  everywhere :: (Action m -> Maybe (Action m)) -> m a -> m a
-
-  -- | Applies a modification to some transactions in a tree, note that
-  -- @somewhere (const Nothing) x == empty@, because 'somewhere' implies
-  -- progress, hence if it is not possible to apply the transformation anywhere
-  -- in @x@, there would be no progress.
-  somewhere :: (Action m -> Maybe (Action m)) -> m a -> m a
+-- | A modal mock chain is a mock chain that allows us to use LTL modifications with 'Attack's
+type MonadModalMockChain m = (MonadMockChain m, MonadModal m, Modification m ~ Attack)
 
 -- ** Deriving further 'MonadBlockChain' instances
 
@@ -268,13 +254,14 @@ instance (MonadTransControl t, MonadMockChain m, MonadFail (t m)) => MonadMockCh
   askSigners = lift askSigners
   slotConfig = lift slotConfig
 
-instance (MonadTransControl t, MonadModal m, Monad (t m), StT t () ~ ()) => MonadModal (AsTrans t m) where
-  type Action (AsTrans t m) = Action m
-  everywhere f (AsTrans act) = AsTrans $ everywhere f `unliftOn` act
-  somewhere f (AsTrans act) = AsTrans $ somewhere f `unliftOn` act
+deriving via (AsTrans (WriterT w) m) instance (Monoid w, MonadBlockChain m) => MonadBlockChain (WriterT w m)
+
+deriving via (AsTrans (WriterT w) m) instance (Monoid w, MonadMockChain m) => MonadMockChain (WriterT w m)
 
 deriving via (AsTrans (ReaderT r) m) instance MonadBlockChain m => MonadBlockChain (ReaderT r m)
 
 deriving via (AsTrans (ReaderT r) m) instance MonadMockChain m => MonadMockChain (ReaderT r m)
 
-deriving via (AsTrans (ReaderT r) m) instance MonadModal m => MonadModal (ReaderT r m)
+deriving via (AsTrans (StateT s) m) instance MonadBlockChain m => MonadBlockChain (StateT s m)
+
+deriving via (AsTrans (StateT s) m) instance MonadMockChain m => MonadMockChain (StateT s m)
