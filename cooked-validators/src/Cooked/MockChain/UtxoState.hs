@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 module Cooked.MockChain.UtxoState where
 
 import Control.Arrow (second)
+import Cooked.Currencies
 import Cooked.MockChain.Wallet
 import Data.Function (on)
 import qualified Data.List as L
@@ -196,20 +198,29 @@ prettyCurrencyAndAmount symbol =
     prettySymbol :: Pl.CurrencySymbol -> Doc ann
     prettySymbol = Prettyprinter.pretty . take 7 . show
 
+    prettySpacedNumber :: Integer -> Doc ann
+    prettySpacedNumber i =
+      if i >= 0
+        then psnTerm "" 0 i
+        else "-" <> psnTerm "" 0 (- i)
+      where
+        psnTerm :: Doc ann -> Integer -> Integer -> Doc ann
+        psnTerm acc _ 0 = acc
+        psnTerm acc 3 nb = psnTerm (Prettyprinter.pretty (nb `mod` 10) <> "_" <> acc) 1 (nb `div` 10)
+        psnTerm acc n nb = psnTerm (Prettyprinter.pretty (nb `mod` 10) <> acc) (n + 1) (nb `div` 10)
+
     prettyToken :: Pl.TokenName -> Integer -> Doc ann
     prettyToken name n =
-      ( if symbol == Pl.CurrencySymbol ""
-          then (if name == Pl.TokenName "" then "Ada" else Prettyprinter.pretty name)
-          else
-            Prettyprinter.parens
-              ( prettySymbol symbol
-                  <+> "$"
-                  <+> Prettyprinter.pretty name
-              )
-      )
-        <> ":"
-        <> Prettyprinter.space
-        <> Prettyprinter.pretty n
+      let prettyAmount = ":" <+> prettySpacedNumber n
+          prettyCurrency
+            | symbol == Pl.CurrencySymbol "" = "Lovelace"
+            | symbol == quickCurrencySymbol = withTok "Quick"
+            | symbol == permanentCurrencySymbol = withTok "Perm"
+            | otherwise = withTok (prettySymbol symbol)
+
+          withTok :: Doc ann -> Doc ann
+          withTok s = Prettyprinter.parens (s <+> "$" <+> Prettyprinter.pretty name)
+       in prettyCurrency <+> prettyAmount
 
 prettyAddressTypeAndHash :: Pl.Address -> Doc ann
 prettyAddressTypeAndHash (Pl.Address addrCr _) =
