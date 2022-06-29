@@ -7,6 +7,7 @@
 
 module Cooked.Ltl where
 
+import Control.Applicative
 import Control.Monad
 import Control.Monad.State
 import Data.Kind
@@ -223,7 +224,7 @@ instance Monad (Staged op) where
 -- * have the right 'builtin' functions, which can be modified by the right
 --   'modification's,
 --
--- * be a 'MonadPlus', because one LTL formula might yield different modified
+-- * be a 'Alternative', because one LTL formula might yield different modified
 --   versions of the computation, and
 --
 -- This type class only requires from the user to specify how to interpret the
@@ -233,15 +234,18 @@ instance Monad (Staged op) where
 --
 -- > interpBuiltin op =
 -- >  get
--- >    >>= msum
+-- >    >>= asum
 -- >      . map (\(now, later) -> applyModification now op <* put later)
 -- >      . nowLaterList
 --
 -- (But to write this, @modification@ has to be a 'Monoid' to make
 -- 'nowLaterList' work!) Look at the tests for this module and at
 -- "Cooked.MockChain.Monad.Staged" for examples of how to use this type class.
-class MonadPlus m => InterpLtl modification builtin m where
+class (Monad m, Alternative m) => InterpLtl modification builtin m where
   interpBuiltin :: builtin a -> StateT [Ltl modification] m a
+
+myempty :: (Alternative m) => StateT s m a
+myempty = StateT $ \_ -> empty
 
 -- | Interpret a 'Staged' computation into a suitable domain, using the function
 -- 'interpBuiltin' to interpret the builtins.
@@ -249,7 +253,7 @@ interpLtl ::
   (InterpLtl modification builtin m) =>
   Staged (LtlOp modification builtin) a ->
   StateT [Ltl modification] m a
-interpLtl (Return a) = get >>= \xs -> if all finished xs then return a else mzero
+interpLtl (Return a) = get >>= \xs -> if all finished xs then return a else myempty
 interpLtl (Instr (StartLtl x) f) = get >>= put . (x :) >>= interpLtl . f
 interpLtl (Instr StopLtl f) = do
   xs <- get
@@ -260,7 +264,7 @@ interpLtl (Instr StopLtl f) = do
         then do
           put rest
           interpLtl $ f ()
-        else mzero
+        else myempty
 interpLtl (Instr (Builtin b) f) = interpBuiltin b >>= interpLtl . f
 
 -- * Convenience functions

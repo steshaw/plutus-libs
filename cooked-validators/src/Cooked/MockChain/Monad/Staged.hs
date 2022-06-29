@@ -20,7 +20,9 @@ import Cooked.MockChain.Monad.Direct
 import Cooked.MockChain.UtxoState
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
+import Data.Foldable
 import qualified Data.List.NonEmpty as NE
+import Debug.Trace
 import qualified Ledger as Pl
 import qualified Ledger.TimeSlot as Pl
 import qualified PlutusTx as Pl (FromData)
@@ -110,24 +112,24 @@ instance {-# OVERLAPS #-} Semigroup Attack where
 instance {-# OVERLAPS #-} Monoid Attack where
   mempty = Just
 
-instance MonadPlus m => MonadPlus (MockChainT m) where
-  mzero = lift mzero
-  mplus = combineMockChainT mplus
-
 instance InterpLtl Attack MockChainBuiltin InterpMockChain where
-  interpBuiltin (ValidateTxSkel skel) =
-    get
-      >>= msum
-        . map (uncurry interpTellAndPut)
-        . nowLaterList
+  interpBuiltin (ValidateTxSkel skel) = do
+    curr <- get
+    trace ("validate: " ++ show (prettyTxSkel [] skel)) (return ())
+    trace ("curr mods: " ++ show curr) (return ())
+    let nll = nowLaterList curr
+    trace ("now or later: " ++ show nll) (return ())
+    trace ("########") (return ())
+    asum $ map (uncurry interpTellAndPut) (reverse nll)
     where
-      interpTellAndPut :: Attack -> [Ltl Attack] -> StateT [Ltl Attack] InterpMockChain Pl.CardanoTx
+      -- interpTellAndPut :: Attack -> [Ltl Attack] -> StateT [Ltl Attack] InterpMockChain Pl.CardanoTx
       interpTellAndPut now later =
         case now skel of
-          Nothing -> mzero
+          Nothing -> trace "- empty" empty
           Just skel' -> do
+            trace "- continue" (return ())
             signers <- askSigners
-            lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ ValidateTxSkel skel'
+            -- lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ ValidateTxSkel skel'
             txId <- validateTxSkel skel'
             put later
             return txId
@@ -141,8 +143,8 @@ instance InterpLtl Attack MockChainBuiltin InterpMockChain where
   interpBuiltin OwnPubKey = ownPaymentPubKeyHash
   interpBuiltin AskSigners = askSigners
   interpBuiltin GetSlotConfig = slotConfig
-  interpBuiltin Empty = mzero
-  interpBuiltin (Alt l r) = interpLtl l `mplus` interpLtl r
+  interpBuiltin Empty = myempty
+  interpBuiltin (Alt l r) = interpLtl l <|> interpLtl r
   interpBuiltin (Fail msg) = fail msg
 
 -- * 'MonadBlockChain' and 'MonadMockChain' instances

@@ -1,14 +1,17 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Cooked.Attack where
 
+import Control.Exception
 import Cooked.MockChain.RawUPLC (unsafeTypedValidatorFromUPLC)
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
@@ -19,6 +22,7 @@ import qualified Ledger.Typed.Scripts as L
 import Optics.Core
 import qualified PlutusTx as Pl
 import qualified PlutusTx.Numeric as Pl (negate)
+import System.IO.Unsafe
 import Type.Reflection
 
 -- The idea of this module: Turning optics into attacks
@@ -95,6 +99,17 @@ import Type.Reflection
 -- try to modify a transaction, or return @Nothing@ if the modification does not
 -- apply; use in a 'MonadModalMockChain'.
 type Attack = TxSkel -> Maybe TxSkel
+
+instance Show Attack where
+  show f = unsafePerformIO $ do
+    res <- try @SomeException (return $ tryId f) >>= evaluate
+    return $ case res of
+      Left _ -> "Attack"
+      Right _ -> "Id"
+    where
+      tryId h = case h (TxSkel @() Nothing undefined undefined) of
+        Just _ -> "Id"
+        _ -> error "impossible"
 
 -- | The simplest way to make an attack from an optic: Try to apply a given
 -- function of type @a -> Maybe a@ to all foci of an optic, modifying all foci
