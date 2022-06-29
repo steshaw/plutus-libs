@@ -8,11 +8,14 @@
 module Cooked.Tx.Constraints.Optics where
 
 import Cooked.Tx.Constraints.Type
+import Data.Typeable
 import qualified Ledger as L
 import qualified Ledger.Ada as L
 import qualified Ledger.Typed.Scripts as L
 import qualified Ledger.Value as L
 import Optics.Core
+import qualified PlutusTx as Pl
+import qualified PlutusTx.Eq as Pl
 
 -- A few remarks:
 
@@ -142,6 +145,29 @@ paysScriptConstraintP =
 
 paysScriptConstraintsT :: Traversal' TxSkel PaysScriptConstraint
 paysScriptConstraintsT = outConstraintsL % traversed % paysScriptConstraintP
+
+data PaysPKWithDatumConstraint where
+  PaysPKWithDatumConstraint ::
+    (Pl.ToData a, Pl.Eq a, Show a, Typeable a) =>
+    L.PubKeyHash ->
+    Maybe L.StakePubKeyHash ->
+    Maybe a ->
+    L.Value ->
+    PaysPKWithDatumConstraint
+
+paysPKWithDatumConstraintP :: Prism' OutConstraint PaysPKWithDatumConstraint
+paysPKWithDatumConstraintP =
+  prism'
+    ( \case
+        PaysPKWithDatumConstraint h sh d v -> PaysPKWithDatum h sh d v
+    )
+    ( \case
+        PaysPKWithDatum h sh d v -> Just $ PaysPKWithDatumConstraint h sh d v
+        _ -> Nothing
+    )
+
+paysPKWithDatumConstraintsT :: Traversal' TxSkel PaysPKWithDatumConstraint
+paysPKWithDatumConstraintsT = outConstraintsL % traversed % paysPKWithDatumConstraintP
 
 -- * Extracting 'L.Value's from different types
 

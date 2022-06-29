@@ -118,8 +118,19 @@ instance InterpLtl Attack MockChainBuiltin InterpMockChain where
   interpBuiltin (ValidateTxSkel skel) =
     get
       >>= msum
-        . map (\(now, later) -> maybe mzero validateTxSkel (now skel) <* put later)
+        . map (uncurry interpTellAndPut)
         . nowLaterList
+    where
+      interpTellAndPut :: Attack -> [Ltl Attack] -> StateT [Ltl Attack] InterpMockChain Pl.CardanoTx
+      interpTellAndPut now later =
+        case now skel of
+          Nothing -> mzero
+          Just skel' -> do
+            signers <- askSigners
+            lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ ValidateTxSkel skel'
+            txId <- validateTxSkel skel'
+            put later
+            return txId
   interpBuiltin (SigningWith ws act) = signingWith ws (interpLtl act)
   interpBuiltin (TxOutByRef o) = txOutByRef o
   interpBuiltin GetCurrentSlot = currentSlot

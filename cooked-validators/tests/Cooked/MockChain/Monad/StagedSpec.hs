@@ -12,6 +12,9 @@ import Cooked.Tx.Constraints
 import Data.Default
 import Data.Foldable
 import Data.Maybe
+import Data.Typeable
+import Debug.Trace
+import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
 import Test.Tasty
 import Test.Tasty.HUnit
