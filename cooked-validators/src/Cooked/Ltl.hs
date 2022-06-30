@@ -249,7 +249,7 @@ interpLtl ::
   (InterpLtl modification builtin m) =>
   Staged (LtlOp modification builtin) a ->
   StateT [Ltl modification] m a
-interpLtl (Return a) = get >>= \xs -> if all finished xs then return a else mzero
+interpLtl (Return a) = return a
 interpLtl (Instr (StartLtl x) f) = get >>= put . (x :) >>= interpLtl . f
 interpLtl (Instr StopLtl f) = do
   xs <- get
@@ -262,6 +262,15 @@ interpLtl (Instr StopLtl f) = do
           interpLtl $ f ()
         else mzero
 interpLtl (Instr (Builtin b) f) = interpBuiltin b >>= interpLtl . f
+
+interpLtlAndPrune ::
+  (InterpLtl modification builtin m) =>
+  Staged (LtlOp modification builtin) a ->
+  StateT [Ltl modification] m a
+interpLtlAndPrune f = do
+  res <- interpLtl f
+  mods <- get
+  if all finished mods then return res else mzero
 
 -- * Convenience functions
 

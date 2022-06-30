@@ -35,17 +35,16 @@ tests :: [TestTree]
 tests =
   [ testGroup
       "unit"
-      [ testCase "somewhere (Just . f) >> a >> b >> c == [f a >> b >> c , a >> f b >> c , a >> b >> f c]" $
+      [ testCase "(PR110) somewhere (Just . f) >> a >> b >> c == [f a >> b >> c , a >> f b >> c , a >> b >> f c]" $
           let f (TxSkel lbl opts cs) =
                 case toConstraints cs of
                   is :=>: os -> TxSkel lbl opts (is :=>: (paysPK (walletPKHash $ wallet 5) (Pl.lovelaceValueOf 10000000) : os))
               tr f g h = void $ do
                 validateTxSkel $ f $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4200000)]
-                validateTxSkel $ g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4200000)]
+                validateTxSkel (g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4200000)]) `as` wallet 2
                 -- This return is here on purpose; it adds something that is not a ValidateTxSkel to
                 -- the staged AST. Check https://github.com/tweag/plutus-libs/pull/110 for the
                 -- bug that triggered these tests to be created.
-                _ <- return ()
                 validateTxSkel $ h $ txSkel [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4200000)]
            in somewhere (Just . f) (tr id id id) `smcEq` (tr f id id <|> tr id f id <|> tr id id f),
         testCase "somewhere (\\case b -> b'; _ -> Nothing) >> a >> b >> c == [a >> b' >> c]" $

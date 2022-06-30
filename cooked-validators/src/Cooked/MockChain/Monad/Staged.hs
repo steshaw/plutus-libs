@@ -57,7 +57,7 @@ type InterpMockChain = MockChainT (WriterT TraceDescr [])
 --  > =~= st -> (WriterT TraceDescr []) (Either err (a, st))
 --  > =~= st -> [(Either err (a, st) , TraceDescr)]
 interpret :: StagedMockChain a -> InterpMockChain a
-interpret = flip evalStateT [] . interpLtl
+interpret = flip evalStateT [] . interpLtlAndPrune
 
 -- * 'StagedMockChain': An AST for 'MonadMockChain' computations
 
