@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 import Control.Monad.Writer.Strict
+import Cooked.Attack
 import Cooked.Ltl
 import Cooked.MockChain
 import Cooked.Tx.Constraints
@@ -62,5 +63,17 @@ tests =
                 validateTxSkel $ g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4200000)]
                 validateTxSkel $ h $ txSkel [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4200000)]
            in somewhere f (tr id id id) `smcEq` tr id (fromJust . f) id
+      ],
+    testGroup
+      "regression"
+      [ testCase "pr 110" $
+          testSatisfiesFrom'
+            (\l -> if length l == 3 then testSuccess else testFailure)
+            def
+            ( somewhere (Just . addLabel "a") $ do
+                validateTxConstr [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
+                validateTxConstr [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4_200_000)] `as` wallet 2
+                validateTxConstr [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4_200_000)]
+            )
       ]
   ]
