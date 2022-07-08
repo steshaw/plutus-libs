@@ -3,16 +3,22 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Cooked.Attack where
 
+import Cooked.MockChain.Monad.Direct
 import Cooked.MockChain.RawUPLC (unsafeTypedValidatorFromUPLC)
+import Cooked.MockChain.UtxoState
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
 import Cooked.Tx.Constraints.Optics
+import qualified Data.Map as M
 import Data.Maybe
 import qualified Ledger as L hiding (validatorHash)
 import qualified Ledger.Typed.Scripts as L
@@ -94,7 +100,7 @@ import Type.Reflection
 -- | The type of attacks that operate on a single transaction. The idea is to
 -- try to modify a transaction, or return @Nothing@ if the modification does not
 -- apply; use in a 'MonadModalMockChain'.
-type Attack = TxSkel -> Maybe TxSkel
+type Attack = MockChainSt -> TxSkel -> Maybe TxSkel
 
 -- | The simplest way to make an attack from an optic: Try to apply a given
 -- function of type @a -> Maybe a@ to all foci of an optic, modifying all foci
@@ -112,12 +118,12 @@ mkAttack ::
 mkAttack optic f =
   mkAccumLAttack
     optic
-    ( \flag x -> case f x of
+    ( \_ flag x -> case f x of
         Just y -> (y, True)
         Nothing -> (x, flag)
     )
     False
-    (\skel flag -> if flag then Just skel else Nothing)
+    (\_ skel flag -> if flag then Just skel else Nothing)
 
 -- | A more fine-grained attack: Traverse all foci of the optic from the left to
 -- the right, while counting them, and modify only those foci that return @Just@
@@ -139,7 +145,7 @@ mkSelectAttack ::
 mkSelectAttack optic f select =
   mkAccumLAttack
     optic
-    ( \(flag, index) x -> case f x of
+    ( \_ (flag, index) x -> case f x of
         Just y ->
           if select index
             then (y, (True, index + 1))
@@ -147,7 +153,7 @@ mkSelectAttack optic f select =
         Nothing -> (x, (flag, index))
     )
     (False, 0)
-    (\skel (flag, _) -> if flag then Just skel else Nothing)
+    (\_ skel (flag, _) -> if flag then Just skel else Nothing)
 
 -- | A very general attack: Traverse all foci of the optic from the left to the
 -- right, collecting an accumulator while also (optionally) modifying the
@@ -160,19 +166,19 @@ mkAccumLAttack ::
   Optic' k is TxSkel a ->
   -- | function that describes the modification of the accumulator and the
   -- current focus.
-  (acc -> a -> (a, acc)) ->
+  (MockChainSt -> acc -> a -> (a, acc)) ->
   -- | initial accumulator
   acc ->
   -- | function to decide whether the traversal modified the 'TxSkel' in the
   -- desired way. This will typically look like this:
-  -- > \skel acc -> if someTest skel acc
-  -- >               then Just (someFinalModification skel)
-  -- >               else Nothing
-  (TxSkel -> acc -> Maybe TxSkel) ->
+  -- > \state skel acc -> if someTest state skel acc
+  -- >                    then Just (someFinalModification state skel acc)
+  -- >                    else Nothing
+  (MockChainSt -> TxSkel -> acc -> Maybe TxSkel) ->
   Attack
-mkAccumLAttack optic f initAcc test skel =
-  let (skel', acc) = mapAccumLOf optic f initAcc skel
-   in test skel' acc
+mkAccumLAttack optic f initAcc test mcst skel =
+  let (skel', acc) = mapAccumLOf optic (f mcst) initAcc skel
+   in test mcst skel' acc
 
 -- * General helpers
 
@@ -205,9 +211,9 @@ dupTokenAttack ::
   -- paid to this wallet.
   Wallet ->
   Attack
-dupTokenAttack change attacker skel =
+dupTokenAttack change attacker mcst skel =
   addLabel DupTokenLbl . paySurplusTo attacker skel
-    <$> mkAttack (mintsConstraintsT % valueL) increaseValue skel
+    <$> mkAttack (mintsConstraintsT % valueL) increaseValue mcst skel
   where
     increaseValue :: L.Value -> Maybe L.Value
     increaseValue v =
@@ -262,7 +268,7 @@ datumHijackingAttack ::
   -- output(s) with this predicate.
   (Integer -> Bool) ->
   Attack
-datumHijackingAttack change select skel =
+datumHijackingAttack change select mcst skel =
   let thief = datumHijackingTarget @a
 
       changeRecipient :: PaysScriptConstraint -> Maybe PaysScriptConstraint
@@ -275,7 +281,7 @@ datumHijackingAttack change select skel =
               else Nothing
           Nothing -> Nothing
    in addLabel (DatumHijackingLbl $ L.validatorHash thief)
-        <$> mkSelectAttack paysScriptConstraintsT changeRecipient select skel
+        <$> mkSelectAttack paysScriptConstraintsT changeRecipient select mcst skel
 
 newtype DatumHijackingLbl = DatumHijackingLbl L.ValidatorHash
   deriving (Show, Eq)
@@ -288,3 +294,85 @@ datumHijackingTarget = unsafeTypedValidatorFromUPLC (Pl.getPlc $$(Pl.compile [||
   where
     tgt :: Pl.BuiltinData -> Pl.BuiltinData -> Pl.BuiltinData -> ()
     tgt _ _ _ = ()
+
+-- * Double satisfaction attack
+
+inFibre :: forall a ty b. (Typeable a, Typeable b) => ty b -> Maybe (a :~~: b)
+inFibre _ = typeRep @a `eqTypeRep` typeRep @b
+
+spendsScriptConstraintsT :: Traversal' TxSkel SpendsScriptConstraint
+spendsScriptConstraintsT = miscConstraintsL % traversed % spendsScriptConstraintP
+
+data DoubleSatParams b = DoubleSatParams
+  { dsExtraInputOwner :: L.TypedValidator b,
+    dsExtraInputPred :: L.Value -> L.DatumType b -> Bool,
+    dsExtraInputRedeemer :: L.RedeemerType b,
+    dsSelectSpendsScript :: SpendsScriptConstraint -> Bool,
+    dsAttacker :: Wallet
+  }
+
+doubleSatAttack ::
+  forall b.
+  ( SpendsConstrs b,
+    Pl.FromData (L.DatumType b)
+  ) =>
+  DoubleSatParams b ->
+  Attack
+doubleSatAttack DoubleSatParams {..} mcst skel =
+  addLabel DoubleSatLbl
+    . paySurplusTo dsAttacker
+    <$> mkAccumLAttack
+      (singular spendsScriptConstraintsT)
+      ( \mcst _ constr ->
+          if dsSelectSpendsScript constr
+            then (constr, SpendsScript dsExtraInputOwner dsExtraInputRedeemer <$> extraUtxo)
+            else (constr, Nothing)
+      )
+      Nothing
+      ( \mcst sk mConstr -> case mConstr of
+          Nothing -> Nothing
+          Just c -> Just $ over miscConstraintsL (c :) sk
+      )
+      mcst
+      skel
+  where
+    getDatumFromHash :: L.DatumHash -> Maybe (L.DatumType b)
+    getDatumFromHash dh = do
+      L.Datum d <- M.lookup dh (mcstDatums mcst)
+      Pl.fromBuiltinData d
+
+    -- try to get a UTxO from the 'MockChainSt' that belongs to
+    -- 'dsExtraInputOwner' and whose value and datum satisfy 'dsExtraInputPred'
+    extraUtxo :: Maybe (SpendableOut, L.DatumType b)
+    extraUtxo =
+      let -- a list of all UTxOs belonging to 'dsExtraInputOwner' and satisfying
+          -- the 'dsExtraInputPred'
+          candidates =
+            M.toList $
+              M.filter
+                ( \case
+                    L.TxOut a v (Just dh) ->
+                      (a == L.validatorAddress dsExtraInputOwner)
+                        && maybe False (dsExtraInputPred v) (getDatumFromHash dh)
+                    _ -> False
+                )
+                (L.getIndex $ mcstIndex mcst)
+       in case candidates of
+            (oref, L.TxOut a v (Just dh)) : _ ->
+              (( oref,
+                 L.ScriptChainIndexTxOut
+                   a
+                   (Left $ L.validatorHash dsExtraInputOwner)
+                   (Left dh)
+                   v
+               ),)
+                <$> getDatumFromHash dh
+            _ -> Nothing
+
+    paySurplusTo :: Wallet -> TxSkel -> TxSkel
+    paySurplusTo w sk = over outConstraintsL (++ [paysPK (walletPKHash w) surplus]) sk
+      where
+        surplus = txSkelInValue skel <> Pl.negate (txSkelOutValue skel)
+
+data DoubleSatLbl = DoubleSatLbl
+  deriving (Eq, Show)
