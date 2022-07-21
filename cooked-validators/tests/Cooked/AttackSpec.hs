@@ -208,7 +208,7 @@ lockTxSkel :: SpendableOut -> L.TypedValidator MockContract -> TxSkel
 lockTxSkel o v =
   txSkelOpts
     (def {adjustUnbalTx = True})
-    ([SpendsPK o] :=>: [PaysScript v FirstLock lockValue])
+    ([SpendsPK o] :=>: [paysScript v FirstLock lockValue])
 
 txLock :: MonadBlockChain m => L.TypedValidator MockContract -> m ()
 txLock v = do
@@ -221,7 +221,7 @@ relockTxSkel v o =
   txSkelOpts
     (def {adjustUnbalTx = True})
     ( [SpendsScript v () (o, FirstLock)]
-        :=>: [PaysScript v SecondLock lockValue]
+        :=>: [paysScript v SecondLock lockValue]
     )
 
 txRelock ::
@@ -301,11 +301,11 @@ datumHijackingAttackTests =
             x3 = L.lovelaceValueOf 9999
             skelIn =
               txSkel
-                [ PaysScript val1 SecondLock x1,
-                  PaysScript val1 SecondLock x3,
-                  PaysScript val2 SecondLock x1,
-                  PaysScript val1 FirstLock x2,
-                  PaysScript val1 SecondLock x2
+                [ paysScript val1 SecondLock x1,
+                  paysScript val1 SecondLock x3,
+                  paysScript val2 SecondLock x1,
+                  paysScript val1 FirstLock x2,
+                  paysScript val1 SecondLock x2
                 ]
             skelOut select =
               datumHijackingAttack @MockContract
@@ -319,11 +319,11 @@ datumHijackingAttackTests =
             skelExpected a b =
               txSkelLbl
                 (DatumHijackingLbl $ L.validatorHash thief)
-                [ PaysScript val1 SecondLock x1,
-                  PaysScript a SecondLock x3,
-                  PaysScript val2 SecondLock x1,
-                  PaysScript val1 FirstLock x2,
-                  PaysScript b SecondLock x2
+                [ paysScript val1 SecondLock x1,
+                  paysScript a SecondLock x3,
+                  paysScript val2 SecondLock x1,
+                  paysScript val1 FirstLock x2,
+                  paysScript b SecondLock x2
                 ]
          in assertTxSkelEqual (Just $ skelExpected thief val1) (skelOut (0 ==))
               .&&. assertTxSkelEqual (Just $ skelExpected val1 thief) (skelOut (1 ==))
