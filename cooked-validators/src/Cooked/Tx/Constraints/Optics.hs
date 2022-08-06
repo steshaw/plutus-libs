@@ -12,10 +12,10 @@ import qualified Ledger as L
 import qualified Ledger.Typed.Scripts as L
 import qualified Ledger.Value as L
 import Optics.Core
+import qualified Plutus.V1.Ledger.Api as L
 import qualified PlutusTx as Pl
 import qualified PlutusTx.Prelude as Pl
 import Type.Reflection
-import qualified Plutus.V1.Ledger.Api as L
 
 -- A few remarks:
 
