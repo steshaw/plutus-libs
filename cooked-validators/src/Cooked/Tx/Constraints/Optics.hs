@@ -12,7 +12,6 @@ module Cooked.Tx.Constraints.Optics where
 
 import Cooked.Tx.Constraints.Type
 import qualified Ledger as L
-import qualified Ledger.Ada as L
 import qualified Ledger.Typed.Scripts as L
 import qualified Ledger.Value as L
 import Optics.Core
