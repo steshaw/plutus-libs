@@ -262,7 +262,7 @@ validatePayment Params {..} (Accumulator payment signees) _ ctx
 {-# INLINEABLE verifySig #-}
 verifySig :: Ledger.PubKey -> BuiltinByteString -> Ledger.Signature -> Bool
 verifySig pk msg s =
-  verifySignature (Api.getLedgerBytes $ Ledger.getPubKey pk) msg (Ledger.getSignature s)
+  verifyEd25519Signature (Api.getLedgerBytes $ Ledger.getPubKey pk) msg (Ledger.getSignature s)
 
 -- Finally, we wrap everything up and make the script available.
 

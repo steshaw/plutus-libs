@@ -42,7 +42,7 @@ import Ledger.Orphans ()
 import qualified Ledger.Scripts as Pl
 import qualified Ledger.TimeSlot as Pl
 import qualified Ledger.Validation as Pl
-import qualified Ledger.Value as Pl
+import qualified Ledger.Value as Pl (flattenValue)
 import qualified PlutusTx as Pl
 import qualified PlutusTx.Lattice as PlutusTx
 import qualified PlutusTx.Numeric as Pl
