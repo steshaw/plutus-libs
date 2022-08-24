@@ -42,8 +42,13 @@ dependencies:
   - cardano-api
   - cardano-crypto
   - cardano-wallet-core
+  - cardano-ledger-alonzo
+  - cardano-ledger-core
+  - cardano-ledger-shelley
   - memory
   - optics-core
+  - array
+  - strict-containers
 
 library:
   source-dirs: src

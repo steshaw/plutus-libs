@@ -26,6 +26,7 @@ library
       Cooked.MockChain.Monad
       Cooked.MockChain.Monad.Contract
       Cooked.MockChain.Monad.Direct
+      Cooked.MockChain.Monad.Experiment
       Cooked.MockChain.Monad.Staged
       Cooked.MockChain.RawUPLC
       Cooked.MockChain.Testing
@@ -51,10 +52,14 @@ library
   build-depends:
       QuickCheck
     , aeson
+    , array
     , base >=4.9 && <5
     , bytestring
     , cardano-api
     , cardano-crypto
+    , cardano-ledger-alonzo
+    , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-wallet-core
     , containers
     , data-default
@@ -81,6 +86,7 @@ library
     , prettyprinter
     , scientific
     , streaming
+    , strict-containers
     , tasty
     , tasty-hunit
     , tasty-quickcheck
@@ -115,10 +121,14 @@ test-suite spec
   build-depends:
       QuickCheck
     , aeson
+    , array
     , base >=4.9 && <5
     , bytestring
     , cardano-api
     , cardano-crypto
+    , cardano-ledger-alonzo
+    , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-wallet-core
     , containers
     , cooked-validators
@@ -146,6 +156,7 @@ test-suite spec
     , prettyprinter
     , scientific
     , streaming
+    , strict-containers
     , tasty
     , tasty-hunit
     , tasty-quickcheck
