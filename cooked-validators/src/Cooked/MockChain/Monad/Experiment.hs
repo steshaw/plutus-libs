@@ -25,12 +25,18 @@ import Cardano.Wallet.Primitive.Slotting
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
+import qualified Cooked.PlutusDeps as Pl
+import Cooked.Tx.Constraints.Optics
 import Cooked.Tx.Constraints.Type
 import Data.Array
 import Data.Map
 import Data.Sequence.Strict
 import Data.Set
+import GHC.Natural
 import GHC.Records
+import Ledger.Tx (TxOutRef (..))
+import Optics.Core
+import qualified Plutus.V1.Ledger.Api as Pl
 
 data MockChainSt
 
@@ -85,33 +91,53 @@ each of these steps may fail, and then a suitable failure must be signalled.
 -- txSkelTxIns :: AlonzoBody era => TxSkel -> Set (TxIn (Crypto era))
 -- txSkelTxIns = undefined
 
+class HasInputUtxo a where
+  inputUtxoL :: Lens' a SpendableOut
+
+instance HasInputUtxo SpendsScriptConstraint where
+  inputUtxoL =
+    lens
+      (\(SpendsScriptConstraint _ _ (o, _)) -> o)
+      (\(SpendsScriptConstraint v r (_, d)) o -> SpendsScriptConstraint v r (o, d))
+
+inputUtxoAT :: AffineTraversal' MiscConstraint SpendableOut
+inputUtxoAT = undefined
+
+txInL :: Lens' SpendableOut (TxIn era)
+txInL =
+  lens
+    (\(TxOutRef (Pl.TxId tid) n, _) -> TxIn (undefined tid) (naturalFromInteger n))
+    undefined
+
 txSkelTxIns :: TxSkel -> Set (TxIn era)
-txSkelTxIns = undefined
+txSkelTxIns = Data.Set.fromList . view (partsOf (miscConstraintsL % traversed % inputUtxoAT % txInL))
 
 txSkelTxOuts :: TxSkel -> StrictSeq (TxOut era)
 txSkelTxOuts = undefined
 
 -- txSkelMint :: TxSkel -> Value era
 -- txSkelMint = undefined
-txSkelMint :: TxSkel -> Value era
-txSkelMint = undefined
+txSkelMint :: TxSkel -> Value (AlonzoEra era)
+txSkelMint = toMaryValue . foldOf (mintsConstraintsT % valueL)
+  where
+    toMaryValue (Pl.Value n) = undefined
 
--- generateUnbalTxBody :: AlonzoBody era => TxSkel -> TxBody era
--- generateUnbalTxBody skel =
---   TxBody
---     (txSkelTxIns skel) -- inputs
---     undefined -- collateral
---     (txSkelTxOuts skel) -- outputs
---     undefined -- txcerts
---     undefined -- txwdrls
---     undefined -- txfee
---     undefined -- txvldt
---     undefined -- txUpdates
---     undefined -- rqeSignerHashes
---     (txSkelMint skel) -- mint
---     undefined -- scriptIntegrityHash
---     undefined -- adHash
---     undefined -- txnetworkid
+generateUnbalTxBody :: Crypto era => TxSkel -> TxBody (AlonzoEra era)
+generateUnbalTxBody skel =
+  TxBody
+    (txSkelTxIns skel) -- inputs
+    undefined -- collateral
+    (txSkelTxOuts skel) -- outputs
+    undefined -- txcerts
+    undefined -- txwdrls
+    undefined -- txfee
+    undefined -- txvldt
+    undefined -- txUpdates
+    undefined -- rqeSignerHashes
+    (txSkelMint skel) -- mint
+    undefined -- scriptIntegrityHash
+    undefined -- adHash
+    undefined -- txnetworkid
 
 -- balanceTx :: Tx era -> Tx era
 -- balanceTx = undefined

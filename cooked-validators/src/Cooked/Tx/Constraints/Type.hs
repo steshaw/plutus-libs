@@ -9,29 +9,31 @@
 
 module Cooked.Tx.Constraints.Type where
 
-import Control.Lens
-import qualified Cooked.PlutusDeps as Pl
+import Cooked.ScriptUtils
 import Data.Default
+import qualified Plutus.V1.Ledger.Api as Pl
+import qualified PlutusTx.Prelude as Pl
 import Type.Reflection
 
--- | A 'SpendableOut' is an outref that is ready to be spend; with its
---  underlying 'Pl.ChainIndexTxOut'.
-type SpendableOut = (Pl.TxOutRef, Pl.ChainIndexTxOut)
+data SpendableOut -- TODO: actually define this
+
+instance Eq SpendableOut where
+  _ == _ = True
 
 -- | Accesses the 'Pl.Value' within a 'SpendableOut'
 sOutValue :: SpendableOut -> Pl.Value
-sOutValue = Pl.txOutValue . Pl.toTxOut . snd
+sOutValue = undefined
 
 -- | Accesses the 'Pl.Address' within a 'SpendableOut'
 sOutAddress :: SpendableOut -> Pl.Address
-sOutAddress = Pl.txOutAddress . Pl.toTxOut . snd
+sOutAddress = undefined
 
 -- | Accesses a potential 'Pl.DatumHash' within a 'SpendableOut'; note that
 --  the existence (or not) of a datum hash /DOES NOT/ indicate the 'SpendableOut'
 --  belongs to a script or a public key; you must pattern match on the result of
 --  'sOutAddress' or use one of 'sBelongsToPubKey' or 'sBelongsToScript' to distinguish that.
 sOutDatumHash :: SpendableOut -> Maybe Pl.DatumHash
-sOutDatumHash = Pl.txOutDatum . Pl.toTxOut . snd
+sOutDatumHash = undefined
 
 -- | If a 'SpendableOut' belongs to a public key, return its hash.
 sBelongsToPubKey :: SpendableOut -> Maybe Pl.PubKeyHash
@@ -46,19 +48,19 @@ sBelongsToScript s = case Pl.addressCredential (sOutAddress s) of
   _ -> Nothing
 
 type SpendsConstrs a =
-  ( Pl.ToData (Pl.DatumType a),
-    Pl.ToData (Pl.RedeemerType a),
-    Show (Pl.DatumType a),
-    Show (Pl.RedeemerType a),
-    Pl.Eq (Pl.DatumType a),
-    Pl.Eq (Pl.RedeemerType a),
+  ( Pl.ToData (DatumType a),
+    Pl.ToData (RedeemerType a),
+    Show (DatumType a),
+    Show (RedeemerType a),
+    Pl.Eq (DatumType a),
+    Pl.Eq (RedeemerType a),
     Typeable a
   )
 
 type PaysScriptConstrs a =
-  ( Pl.ToData (Pl.DatumType a),
-    Show (Pl.DatumType a),
-    Pl.Eq (Pl.DatumType a),
+  ( Pl.ToData (DatumType a),
+    Show (DatumType a),
+    Pl.Eq (DatumType a),
     Typeable a
   )
 
@@ -87,15 +89,15 @@ instance Monoid Constraints where
 
 -- | Constraints which do not specify new transaction outputs
 data MiscConstraint where
-  -- | Ensure that the given 'Pl.TypedValidator' spends a specific UTxO (which
+  -- | Ensure that the given 'TypedValidator' spends a specific UTxO (which
   -- must belong to the validator). That is: Unlock the UTxO described by the
-  -- given pair of 'SpendableOut' and 'Pl.DatumType', passing the given redeemer
+  -- given pair of 'SpendableOut' and 'DatumType', passing the given redeemer
   -- to the validator script.
   SpendsScript ::
     (SpendsConstrs a) =>
-    Pl.TypedValidator a ->
-    Pl.RedeemerType a ->
-    (SpendableOut, Pl.DatumType a) ->
+    TypedValidator a ->
+    RedeemerType a ->
+    (SpendableOut, DatumType a) ->
     MiscConstraint
   -- | Ensure that a 'Pl.PubKeyHash' spends a specific UTxO. The hash is not an
   -- argument since it can be read off the given 'SpendableOut'.
@@ -151,8 +153,8 @@ data OutConstraint where
   -- value.
   PaysScript ::
     (PaysScriptConstrs a) =>
-    Pl.TypedValidator a ->
-    Pl.DatumType a ->
+    TypedValidator a ->
+    DatumType a ->
     Pl.Value ->
     OutConstraint
   -- | Creates a UTxO to a specific 'Pl.PubKeyHash' with a potential 'Pl.StakePubKeyHash'.
@@ -163,7 +165,7 @@ data OutConstraint where
   PaysPKWithDatum ::
     (Pl.ToData a, Pl.Eq a, Show a, Typeable a) =>
     Pl.PubKeyHash ->
-    Maybe Pl.StakePubKeyHash ->
+    -- Maybe Pl.StakePubKeyHash -> -- TODO: What shoul happen here?
     Maybe a ->
     Pl.Value ->
     OutConstraint
@@ -175,9 +177,9 @@ instance Eq OutConstraint where
     case s1 ~*~? s2 of
       Just HRefl -> (s1, v1) == (s2, v2) && d1 Pl.== d2
       Nothing -> False
-  PaysPKWithDatum pk1 stake1 d1 v1 == PaysPKWithDatum pk2 stake2 d2 v2 =
+  PaysPKWithDatum pk1 d1 v1 == PaysPKWithDatum pk2 d2 v2 =
     case d1 ~*~? d2 of
-      Just HRefl -> (pk1, stake1, v1) == (pk2, stake2, v2) && d1 Pl.== d2
+      Just HRefl -> (pk1, v1) == (pk2, v2) && d1 Pl.== d2
       Nothing -> False
   _ == _ = False
 
@@ -204,7 +206,7 @@ instance ConstraintsSpec OutConstraint where
   toConstraints = toConstraints . (: [])
 
 paysPK :: Pl.PubKeyHash -> Pl.Value -> OutConstraint
-paysPK pkh = PaysPKWithDatum @() pkh Nothing Nothing
+paysPK pkh = PaysPKWithDatum @() pkh Nothing
 
 mints :: [Pl.MintingPolicy] -> Pl.Value -> MiscConstraint
 mints = Mints @() Nothing
@@ -336,35 +338,35 @@ data BalanceOutputPolicy
 -- | Wraps a function that can be applied to a transaction right before submitting it.
 --  We have a distinguished datatype to be able to provide a little more info on
 --  the show instance.
-data RawModTx
-  = -- | no effect modifier
-    Id
-  | -- | Apply modification on transaction after balancing is performed
-    RawModTxAfterBalancing (Pl.Tx -> Pl.Tx)
-  | -- | Apply modification on transaction before balancing and transaction fee computation
-    --   are performed.
-    RawModTxBeforeBalancing (Pl.Tx -> Pl.Tx)
+data RawModTx = Id deriving (Eq, Show) -- TODO
+--   = -- | no effect modifier
+--     Id
+--   | -- | Apply modification on transaction after balancing is performed
+--     RawModTxAfterBalancing (Pl.Tx -> Pl.Tx)
+--   | -- | Apply modification on transaction before balancing and transaction fee computation
+--     --   are performed.
+--     RawModTxBeforeBalancing (Pl.Tx -> Pl.Tx)
 
--- | only applies modification for RawModTxAfterBalancing
-applyRawModOnBalancedTx :: RawModTx -> Pl.Tx -> Pl.Tx
-applyRawModOnBalancedTx Id tx = tx
-applyRawModOnBalancedTx (RawModTxAfterBalancing f) tx = f tx
-applyRawModOnBalancedTx (RawModTxBeforeBalancing _) tx = tx
+-- -- | only applies modification for RawModTxAfterBalancing
+-- applyRawModOnBalancedTx :: RawModTx -> Pl.Tx -> Pl.Tx
+-- applyRawModOnBalancedTx Id tx = tx
+-- applyRawModOnBalancedTx (RawModTxAfterBalancing f) tx = f tx
+-- applyRawModOnBalancedTx (RawModTxBeforeBalancing _) tx = tx
 
--- | only applies modification for RawModTxBeforeBalancing
-applyRawModOnUnbalancedTx :: RawModTx -> Pl.UnbalancedTx -> Pl.UnbalancedTx
-applyRawModOnUnbalancedTx Id tx = tx
-applyRawModOnUnbalancedTx (RawModTxAfterBalancing _) tx = tx
-applyRawModOnUnbalancedTx (RawModTxBeforeBalancing f) tx = (Pl.tx %~ f) tx
+-- -- | only applies modification for RawModTxBeforeBalancing
+-- applyRawModOnUnbalancedTx :: RawModTx -> Pl.UnbalancedTx -> Pl.UnbalancedTx
+-- applyRawModOnUnbalancedTx Id tx = tx
+-- applyRawModOnUnbalancedTx (RawModTxAfterBalancing _) tx = tx
+-- applyRawModOnUnbalancedTx (RawModTxBeforeBalancing f) tx = (Pl.tx %~ f) tx
 
-instance Eq RawModTx where
-  Id == Id = True
-  _ == _ = False
+-- instance Eq RawModTx where
+--   Id == Id = True
+--   _ == _ = False
 
-instance Show RawModTx where
-  show Id = "Id"
-  show (RawModTxAfterBalancing _) = "RawModTxAfterBalancing"
-  show (RawModTxBeforeBalancing _) = "RawModTxBeforeBalancing"
+-- instance Show RawModTx where
+--   show Id = "Id"
+--   show (RawModTxAfterBalancing _) = "RawModTxAfterBalancing"
+--   show (RawModTxBeforeBalancing _) = "RawModTxBeforeBalancing"
 
 -- | Specifies how to select the collateral input
 data Collateral

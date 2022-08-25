@@ -12,36 +12,12 @@ extra-source-files:
 
 library
   exposed-modules:
-      Cooked
-      Cooked.Attack
-      Cooked.Attack.Common
-      Cooked.Attack.DatumHijacking
-      Cooked.Attack.DoubleSat
-      Cooked.Attack.DupToken
-      Cooked.Attack.OutPermutations
+      Cooked.ScriptUtils
+      Cooked.ScriptUtils.TypedScripts
       Cooked.Currencies
-      Cooked.Ltl
-      Cooked.MockChain
-      Cooked.MockChain.Constraints
-      Cooked.MockChain.Monad
-      Cooked.MockChain.Monad.Contract
-      Cooked.MockChain.Monad.Direct
-      Cooked.MockChain.Monad.Experiment
-      Cooked.MockChain.Monad.Staged
-      Cooked.MockChain.RawUPLC
-      Cooked.MockChain.Testing
-      Cooked.MockChain.Time
-      Cooked.MockChain.UtxoPredicate
-      Cooked.MockChain.UtxoState
-      Cooked.MockChain.UtxoState.Testing
-      Cooked.MockChain.Wallet
-      Cooked.PlutusDeps
-      Cooked.Tx.Balance
-      Cooked.Tx.Constraints
-      Cooked.Tx.Constraints.Optics
-      Cooked.Tx.Constraints.Pretty
       Cooked.Tx.Constraints.Type
-      Example
+      Cooked.Tx.Constraints.Optics
+      Cooked.Tx.Constraints.ToLedger
   other-modules:
       Paths_cooked_validators
   autogen-modules:
@@ -51,115 +27,24 @@ library
   ghc-options: -Wall -Wno-missed-extra-shared-lib -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fplugin-opt PlutusTx.Plugin:defer-errors
   build-depends:
       QuickCheck
-    , aeson
     , array
-    , base >=4.9 && <5
+    , base
     , bytestring
-    , cardano-api
-    , cardano-crypto
-    , cardano-ledger-alonzo
     , cardano-ledger-core
-    , cardano-ledger-shelley
-    , cardano-wallet-core
-    , containers
-    , data-default
-    , deepseq
-    , either
+    , cardano-ledger-test
+    , cardano-ledger-shelley-ma
     , flat
-    , foldl
-    , freer-extras
-    , freer-simple
-    , lens
-    , memory
-    , monad-control
     , mtl
     , optics-core
-    , plutus-contract
     , plutus-core
-    , plutus-ledger
     , plutus-ledger-api
-    , plutus-ledger-constraints
-    , plutus-pab
-    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
-    , prettyprinter
-    , scientific
-    , streaming
     , strict-containers
     , tasty
     , tasty-hunit
     , tasty-quickcheck
-    , text
-    , transformers
-  default-language: Haskell2010
-
-test-suite spec
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  other-modules:
-      Cooked.AttackSpec
-      Cooked.AttackSpec.Common
-      Cooked.AttackSpec.DatumHijacking
-      Cooked.AttackSpec.DoubleSat
-      Cooked.AttackSpec.DupToken
-      Cooked.AttackSpec.OutPermutations
-      Cooked.AttackSpec.Util
-      Cooked.BalanceSpec
-      Cooked.LtlSpec
-      Cooked.MockChain.Monad.StagedSpec
-      Cooked.MockChain.UtxoStateSpec
-      Cooked.MockChain.WalletSpec
-      Cooked.OutputReorderingSpec
-      Cooked.QuickValueSpec
-      Cooked.TestUtils
-      Paths_cooked_validators
-  autogen-modules:
-      Paths_cooked_validators
-  hs-source-dirs:
-      tests/
-  build-depends:
-      QuickCheck
-    , aeson
-    , array
-    , base >=4.9 && <5
-    , bytestring
-    , cardano-api
-    , cardano-crypto
-    , cardano-ledger-alonzo
-    , cardano-ledger-core
-    , cardano-ledger-shelley
-    , cardano-wallet-core
-    , containers
-    , cooked-validators
-    , data-default
-    , deepseq
-    , either
-    , flat
-    , foldl
-    , freer-extras
-    , freer-simple
     , lens
-    , memory
-    , monad-control
-    , mtl
-    , optics-core
-    , plutus-contract
-    , plutus-core
-    , plutus-ledger
-    , plutus-ledger-api
-    , plutus-ledger-constraints
-    , plutus-pab
-    , plutus-script-utils
-    , plutus-tx
-    , plutus-tx-plugin
-    , prettyprinter
-    , scientific
-    , streaming
-    , strict-containers
-    , tasty
-    , tasty-hunit
-    , tasty-quickcheck
-    , text
-    , transformers
+    , data-default
+    , containers
   default-language: Haskell2010

@@ -13,7 +13,12 @@
 
 module Cooked.Currencies where
 
-import Cooked.PlutusDeps
+import Cooked.ScriptUtils
+import Plutus.V1.Ledger.Api
+import Plutus.V1.Ledger.Value
+import PlutusTx
+import PlutusTx.Builtins.Class
+import PlutusTx.Prelude
 import qualified Prelude as Haskell
 
 -- * Quick Values

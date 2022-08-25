@@ -7,48 +7,21 @@ extra-source-files:
   - README.md
 
 dependencies:
-  - base >= 4.9 && < 5
-  - aeson
-  - bytestring
-  - containers
-  - data-default
-  - deepseq
-  - either
-  - flat
-  - foldl
-  - freer-extras
-  - freer-simple
-  - lens
-  - monad-control
+  - QuickCheck
+  - array
+  - base
+  - cardano-ledger-core
   - mtl
-  - plutus-contract
-  - plutus-core
-  - plutus-ledger
-  - plutus-ledger-constraints
-  - plutus-ledger-api
-  - plutus-script-utils
-  - plutus-pab
+  - optics-core
   - plutus-tx
-  - plutus-tx-plugin
-  - prettyprinter
-  - scientific
-  - streaming
-  - text
-  - transformers
+  - plutus-ledger-api
+  - strict-containers
   - tasty
   - tasty-hunit
   - tasty-quickcheck
-  - QuickCheck
-  - cardano-api
-  - cardano-crypto
-  - cardano-wallet-core
-  - cardano-ledger-alonzo
-  - cardano-ledger-core
-  - cardano-ledger-shelley
-  - memory
-  - optics-core
-  - array
-  - strict-containers
+  - flat
+  - bytestring
+  - plutus-core
 
 library:
   source-dirs: src

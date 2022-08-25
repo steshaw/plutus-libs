@@ -7,9 +7,12 @@
 -- in 'Cooked.Tx.Constraints.Type'.
 module Cooked.Tx.Constraints.Optics where
 
-import qualified Cooked.PlutusDeps as Pl
+import Cooked.ScriptUtils
 import Cooked.Tx.Constraints.Type
 import Optics.Core
+import qualified Plutus.V1.Ledger.Api as Pl
+import qualified Plutus.V1.Ledger.Value as Pl
+import qualified PlutusTx.Prelude as Pl
 import Type.Reflection
 
 -- A few remarks:
@@ -82,9 +85,9 @@ mintsConstraintsT = miscConstraintsL % traversed % mintsConstraintP
 data SpendsScriptConstraint where
   SpendsScriptConstraint ::
     (SpendsConstrs a) =>
-    Pl.TypedValidator a ->
-    Pl.RedeemerType a ->
-    (SpendableOut, Pl.DatumType a) ->
+    TypedValidator a ->
+    RedeemerType a ->
+    (SpendableOut, DatumType a) ->
     SpendsScriptConstraint
 
 spendsScriptConstraintP :: Prism' MiscConstraint SpendsScriptConstraint
@@ -111,6 +114,8 @@ spendableOutL =
         SpendsScriptConstraint v r (_, d) -> SpendsScriptConstraint v r (o, d)
     )
 
+-- | Focus the 'SpendableOut' in a 'SpendsPK' constraint, or nothing on all
+-- other constraints.
 spendsPKConstraintP :: Prism' MiscConstraint SpendableOut
 spendsPKConstraintP =
   prism'
@@ -120,13 +125,27 @@ spendsPKConstraintP =
         _ -> Nothing
     )
 
+spendableOutAT :: AffineTraversal' MiscConstraint SpendableOut
+spendableOutAT =
+  atraversal
+    ( \mc -> case mc of
+        SpendsPK o -> Right o
+        SpendsScript _ _ (o, _) -> Right o
+        _ -> Left mc
+    )
+    ( \mc o -> case mc of
+        SpendsPK _ -> SpendsPK o
+        SpendsScript v r (_, d) -> SpendsScript v r (o, d)
+        _ -> mc
+    )
+
 -- * Picking apart 'OutConstraint's
 
 data PaysScriptConstraint where
   PaysScriptConstraint ::
     PaysScriptConstrs a =>
-    Pl.TypedValidator a ->
-    Pl.DatumType a ->
+    TypedValidator a ->
+    DatumType a ->
     Pl.Value ->
     PaysScriptConstraint
 
@@ -148,7 +167,6 @@ data PaysPKWithDatumConstraint where
   PaysPKWithDatumConstraint ::
     (Pl.ToData a, Pl.Eq a, Show a, Typeable a) =>
     Pl.PubKeyHash ->
-    Maybe Pl.StakePubKeyHash ->
     Maybe a ->
     Pl.Value ->
     PaysPKWithDatumConstraint
@@ -157,10 +175,10 @@ paysPKWithDatumConstraintP :: Prism' OutConstraint PaysPKWithDatumConstraint
 paysPKWithDatumConstraintP =
   prism'
     ( \case
-        PaysPKWithDatumConstraint h sh d x -> PaysPKWithDatum h sh d x
+        PaysPKWithDatumConstraint h d x -> PaysPKWithDatum h d x
     )
     ( \case
-        PaysPKWithDatum h sh d x -> Just $ PaysPKWithDatumConstraint h sh d x
+        PaysPKWithDatum h d x -> Just $ PaysPKWithDatumConstraint h d x
         _ -> Nothing
     )
 
@@ -172,31 +190,19 @@ paysPKWithDatumConstraintsT = outConstraintsL % traversed % paysPKWithDatumConst
 class HasValue a where
   valueL :: Lens' a Pl.Value
 
-instance HasValue Pl.ChainIndexTxOut where
-  valueL =
-    lens
-      ( \case
-          Pl.PublicKeyChainIndexTxOut _ x -> x
-          Pl.ScriptChainIndexTxOut _ _ _ x -> x
-      )
-      ( \o x -> case o of
-          Pl.PublicKeyChainIndexTxOut a _ -> Pl.PublicKeyChainIndexTxOut a x
-          Pl.ScriptChainIndexTxOut a v d _ -> Pl.ScriptChainIndexTxOut a v d x
-      )
-
 instance HasValue SpendableOut where
-  valueL = _2 % valueL
+  valueL = undefined -- TODO, depending on the definition of SpendableOut
 
 instance HasValue OutConstraint where
   valueL =
     lens
       ( \case
           PaysScript _ _ v -> v
-          PaysPKWithDatum _ _ _ v -> v
+          PaysPKWithDatum _ _ v -> v
       )
       ( \c x -> case c of
           PaysScript v d _ -> PaysScript v d x
-          PaysPKWithDatum h sh d _ -> PaysPKWithDatum h sh d x
+          PaysPKWithDatum h d _ -> PaysPKWithDatum h d x
       )
 
 instance HasValue MintsConstraint where
