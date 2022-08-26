@@ -18,6 +18,7 @@ library
       Cooked.Tx.Constraints.Type
       Cooked.Tx.Constraints.Optics
       Cooked.Tx.Constraints.ToLedger
+      Cooked.MockChain.Monad.Direct.Type
   other-modules:
       Paths_cooked_validators
   autogen-modules:
