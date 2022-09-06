@@ -14,7 +14,6 @@ import Data.Maybe
 import qualified Data.Text as T
 import Data.Void
 import qualified Ledger as Pl
-import qualified Ledger.Scripts as Pl
 import qualified Plutus.Contract as C
 import qualified PlutusTx as Pl
 
@@ -52,6 +51,6 @@ instance (C.AsContractError e) => MonadBlockChain (C.Contract w s e) where
 
 datumFromTxOut :: (C.AsContractError e) => Pl.ChainIndexTxOut -> C.Contract w s e (Maybe Pl.Datum)
 datumFromTxOut Pl.PublicKeyChainIndexTxOut {} = pure Nothing
-datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (Right d) _) = pure $ Just d
+datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (_, Just d) _ _) = pure $ Just d
 -- datum is always present in the nominal case, guaranteed by chain-index
-datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (Left dh) _) = C.datumFromHash dh
+datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (dh, Nothing) _ _) = C.datumFromHash dh

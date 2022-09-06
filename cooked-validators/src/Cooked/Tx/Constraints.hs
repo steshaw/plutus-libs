@@ -21,9 +21,8 @@ import qualified Ledger as Pl hiding (singleton, unspentOutputs)
 import qualified Ledger.Constraints as Pl
 import qualified Ledger.Constraints.TxConstraints as Pl
 import qualified Ledger.Credential as Pl
-import qualified Ledger.Scripts as Pl
+import qualified Plutus.Script.Utils.Scripts as PlU
 import qualified Ledger.Typed.Scripts as Pl (DatumType, RedeemerType, validatorScript)
-import qualified Plutus.Script.Utils.V1.Scripts as Pl
 import qualified PlutusTx as Pl
 
 -- * Converting 'Constraint's to 'Pl.ScriptLookups', 'Pl.TxConstraints'
@@ -54,13 +53,13 @@ class ToLedgerConstraint constraint where
 
 instance ToLedgerConstraint MiscConstraint where
   extractDatumStr (SpendsScript _validator _redeemer (_out, datum)) =
-    M.singleton (Pl.datumHash . Pl.Datum $ Pl.toBuiltinData datum) (show datum)
+    M.singleton (PlU.datumHash . Pl.Datum $ Pl.toBuiltinData datum) (show datum)
   extractDatumStr _ = M.empty
 
   toLedgerConstraint (SpendsScript v r ((oref, o), _a)) = (lkups, constr)
     where
       lkups =
-        Pl.otherScript (Pl.validatorScript v)
+        Pl.plutusV1OtherScript (Pl.validatorScript v)
           <> Pl.unspentOutputs (M.singleton oref o)
       constr = Pl.mustSpendScriptOutput oref (Pl.Redeemer $ Pl.toBuiltinData r)
   toLedgerConstraint (SpendsPK (oref, o)) = (lkups, constr)
@@ -69,11 +68,11 @@ instance ToLedgerConstraint MiscConstraint where
       constr = Pl.mustSpendPubKeyOutput oref
   toLedgerConstraint (Mints Nothing pols v) = (lkups, constr)
     where
-      lkups = foldMap Pl.mintingPolicy pols
+      lkups = foldMap Pl.plutusV1MintingPolicy pols
       constr = Pl.mustMintValue v
   toLedgerConstraint (Mints (Just r) pols v) = (lkups, constr)
     where
-      lkups = foldMap Pl.mintingPolicy pols
+      lkups = foldMap Pl.plutusV1MintingPolicy pols
       constr = Pl.mustMintValueWithRedeemer (Pl.Redeemer (Pl.toBuiltinData r)) v
   toLedgerConstraint (Before t) = (mempty, constr)
     where
@@ -86,9 +85,9 @@ instance ToLedgerConstraint MiscConstraint where
 
 instance ToLedgerConstraint OutConstraint where
   extractDatumStr (PaysScript _validator datum _value) =
-    M.singleton (Pl.datumHash . Pl.Datum . Pl.toBuiltinData $ datum) (show datum)
+    M.singleton (PlU.datumHash . Pl.Datum . Pl.toBuiltinData $ datum) (show datum)
   extractDatumStr (PaysPKWithDatum _pk _stak mdat _v) =
-    maybe M.empty (\d -> M.singleton (Pl.datumHash . Pl.Datum $ Pl.toBuiltinData d) (show d)) mdat
+    maybe M.empty (\d -> M.singleton (PlU.datumHash . Pl.Datum $ Pl.toBuiltinData d) (show d)) mdat
 
   toLedgerConstraint (PaysPKWithDatum p stak dat v) = (lkups, constr)
     where
@@ -102,7 +101,7 @@ instance ToLedgerConstraint OutConstraint where
       constr = Pl.singleton $ Pl.MustPayToPubKeyAddress (Pl.PaymentPubKeyHash p) stak mData v
   toLedgerConstraint (PaysScript v datum value) = (lkups, constr)
     where
-      lkups = Pl.otherScript (Pl.validatorScript v)
+      lkups = Pl.plutusV1OtherScript (Pl.validatorScript v)
       constr =
         Pl.mustPayToOtherScript
           (Pl.validatorHash $ Pl.validatorScript v)
@@ -133,13 +132,13 @@ outConstraintToTxOut (PaysPKWithDatum pkh mStakePkh mDatum value) =
           (Pl.PubKeyCredential pkh)
           (Pl.StakingHash . Pl.PubKeyCredential . Pl.unStakePubKeyHash <$> mStakePkh),
       Pl.txOutValue = value,
-      Pl.txOutDatumHash = Pl.datumHash . Pl.Datum . Pl.toBuiltinData <$> mDatum
+      Pl.txOutDatumHash = PlU.datumHash . Pl.Datum . Pl.toBuiltinData <$> mDatum
     }
 outConstraintToTxOut (PaysScript validator datum value) =
   Pl.TxOut
     { Pl.txOutAddress = Pl.scriptHashAddress $ Pl.validatorHash $ Pl.validatorScript validator,
       Pl.txOutValue = value,
-      Pl.txOutDatumHash = Just . Pl.datumHash . Pl.Datum . Pl.toBuiltinData $ datum
+      Pl.txOutDatumHash = Just . PlU.datumHash . Pl.Datum . Pl.toBuiltinData $ datum
     }
 
 -- | Reorders the outputs of a transaction according to the ordered list of
