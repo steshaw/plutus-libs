@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Cooked.Tx.Constraints.Pretty where
 
@@ -16,6 +17,7 @@ import qualified Ledger as Pl hiding (mintingPolicyHash, unspentOutputs)
 import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator)
 import qualified Plutus.Script.Utils.V1.Scripts as Pl
 import qualified Plutus.Script.Utils.V1.Typed.Scripts.Validators as PlU
+import qualified PlutusTx.IsData.Class as Pl
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
 
@@ -67,11 +69,11 @@ prettyMiscConstraint (Mints mr policies val) =
         Just $ "Policies:" <+> PP.list (map prettyMintingPolicy policies)
       ]
 prettyMiscConstraint (SignedBy pkhs) = prettyEnum "SignedBy" "-" $ prettyWallet <$> pkhs
-prettyMiscConstraint (SpendsScript val red outdat) =
+prettyMiscConstraint (SpendsScript val red spOut) =
   prettyEnum
     ("SpendsScript" <+> prettyTypedValidator val)
     "-"
-    ["Redeemer:" <+> PP.viaShow red, prettyOutputDatum val outdat]
+    ["Redeemer:" <+> PP.viaShow red, prettyScriptOutputDatum val spOut]
 prettyMiscConstraint _ = "<constraint without pretty def>"
 
 prettyHash :: (Show a) => a -> Doc ann
@@ -80,13 +82,29 @@ prettyHash = PP.pretty . take 6 . show
 prettyMintingPolicy :: Pl.MintingPolicy -> Doc ann
 prettyMintingPolicy = prettyHash . Pl.mintingPolicyHash
 
-prettyOutputDatum :: (Show (Pl.DatumType a)) => Pl.TypedValidator a -> (SpendableOut, Pl.DatumType a) -> Doc ann
-prettyOutputDatum _ (out, dat) =
-  let (ppAddr, mppVal) = prettyTxOut $ snd out
+prettyScriptOutputDatum ::
+  forall a ann.
+  (Pl.UnsafeFromData (Pl.DatumType a), Show (Pl.DatumType a)) =>
+  Pl.TypedValidator a ->
+  SpendableOut ->
+  Doc ann
+prettyScriptOutputDatum _ (_, chainIndexTxOut) =
+  let (ppAddr, mppVal) = prettyTxOut chainIndexTxOut
+>>>>>>> 8b264fe (Remove datum from `SpendsScript` with no feature loss (#156))
    in PP.align $
         PP.vsep $
           catMaybes
-            [Just $ "Output" <+> "at" <+> ppAddr, mppVal, Just $ "Datum:" <+> prettyDatum dat]
+            [ Just $ "Output" <+> "at" <+> ppAddr,
+              mppVal,
+              case chainIndexTxOut of
+                Pl.ScriptChainIndexTxOut _ _ (Right datum) _ ->
+                  let typedDatum :: Pl.DatumType a
+                      typedDatum = Pl.unsafeFromBuiltinData (Pl.getDatum datum)
+                   in Just $ "Datum:" <+> prettyDatum typedDatum
+                Pl.ScriptChainIndexTxOut _ _ (Left datumHash) _ ->
+                  Just $ "Datum hash:" <+> prettyHash datumHash
+                _ -> error "Not a script output"
+            ]
 
 prettyTxOut :: Pl.ChainIndexTxOut -> (Doc ann, Maybe (Doc ann))
 prettyTxOut tout =
