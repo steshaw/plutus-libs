@@ -26,6 +26,7 @@ dependencies:
   - plutus-ledger
   - plutus-ledger-constraints
   - plutus-ledger-api
+  - plutus-script-utils
   - plutus-pab
   - plutus-tx
   - plutus-tx-plugin
@@ -43,11 +44,13 @@ dependencies:
   - cardano-wallet-core
   - memory
   - optics-core
+  - hashable
 
 library:
   source-dirs: src
   ghc-options:
     -Wall
+    -Wno-missed-extra-shared-lib
     -fobject-code
     -fno-ignore-interface-pragmas
     -fno-omit-interface-pragmas

@@ -14,6 +14,7 @@ import Data.Maybe
 import qualified Data.Text as T
 import Data.Void
 import qualified Ledger as Pl
+import qualified Ledger.Scripts as Pl
 import qualified Plutus.Contract as C
 import qualified PlutusTx as Pl
 
@@ -40,17 +41,18 @@ instance (C.AsContractError e) => MonadBlockChain (C.Contract w s e) where
           else Nothing
     pure $ catMaybes maybeUtxosWithDatums
 
+  utxosSuchThisAndThat _ _ = error "Contract does not support retrieving the UTxOs without a specified address"
+
   txOutByRef ref = fmap Pl.toTxOut <$> C.unspentTxOutFromRef ref
 
-  ownPaymentPubKeyHash = fmap Pl.unPaymentPubKeyHash C.ownPaymentPubKeyHash
+  ownPaymentPubKeyHash = fmap Pl.unPaymentPubKeyHash C.ownFirstPaymentPubKeyHash
 
   currentSlot = C.currentSlot
   currentTime = C.currentTime
   awaitSlot = C.awaitSlot
   awaitTime = C.awaitTime
 
-datumFromTxOut :: (C.AsContractError e) => Pl.ChainIndexTxOut -> C.Contract w s e (Maybe Pl.Datum)
-datumFromTxOut Pl.PublicKeyChainIndexTxOut {} = pure Nothing
-datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (Right d) _) = pure $ Just d
--- datum is always present in the nominal case, guaranteed by chain-index
-datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (Left dh) _) = C.datumFromHash dh
+  datumFromTxOut Pl.PublicKeyChainIndexTxOut {} = pure Nothing
+  datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (Right d) _) = pure $ Just d
+  -- datum is always present in the nominal case, guaranteed by chain-index
+  datumFromTxOut (Pl.ScriptChainIndexTxOut _ _ (Left dh) _) = C.datumFromHash dh

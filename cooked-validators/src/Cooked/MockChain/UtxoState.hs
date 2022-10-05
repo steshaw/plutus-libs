@@ -6,6 +6,7 @@ import Control.Arrow (second)
 import Cooked.Currencies
 import Cooked.MockChain.Wallet
 import Data.Function (on)
+import qualified Data.Hashable as H
 import qualified Data.List as L
 import qualified Data.List as List (intersperse)
 import qualified Data.Map.Strict as M
@@ -13,8 +14,8 @@ import Data.Maybe (catMaybes, mapMaybe)
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Ada
 import qualified Ledger.Credential as Pl
+import qualified Ledger.Scripts as Pl
 import qualified Ledger.Value as Pl
-import qualified PlutusTx.AssocMap as Pl
 import qualified PlutusTx.Numeric as Pl
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
@@ -189,19 +190,21 @@ mPrettyValue =
         [v] -> Just v
         _ -> Just $ PP.lbrace <> PP.indent 1 (PP.vsep vs) <> PP.space <> PP.rbrace
   )
-    . map (uncurry prettyCurrencyAndAmount)
-    . Pl.toList
-    . Pl.getValue
+    . map prettyCurrencyAndAmount
+    . filter (\(_, _, n) -> n /= 0)
+    . Pl.flattenValue
 
-prettyCurrencyAndAmount :: Pl.CurrencySymbol -> Pl.Map Pl.TokenName Integer -> Doc ann
-prettyCurrencyAndAmount symbol =
-  PP.vsep . map (uncurry prettyToken) . Pl.toList
+prettyCurrencyAndAmount :: (Pl.CurrencySymbol, Pl.TokenName, Integer) -> Doc ann
+prettyCurrencyAndAmount (symbol, tName, amount) = prettyToken tName amount
   where
     prettySymbol :: Pl.CurrencySymbol -> Doc ann
     prettySymbol = PP.pretty . take 7 . show
 
     prettySpacedNumber :: Integer -> Doc ann
-    prettySpacedNumber = psnTerm "" 0
+    prettySpacedNumber i
+      | 0 == i = "0" -- this case should never be reached under normal use through 'mPrettyValue'
+      | i > 0 = psnTerm "" 0 i
+      | otherwise = "-" <> psnTerm "" 0 (- i)
       where
         psnTerm :: Doc ann -> Integer -> Integer -> Doc ann
         psnTerm acc _ 0 = acc
@@ -222,15 +225,17 @@ prettyCurrencyAndAmount symbol =
        in prettyCurrency <+> prettyAmount
 
 prettyAddressTypeAndHash :: Pl.Address -> Doc ann
-prettyAddressTypeAndHash (Pl.Address addrCr _) =
+prettyAddressTypeAndHash (Pl.Address addrCr stakingCred) =
   case addrCr of
-    (Pl.ScriptCredential vh) -> prettyAux "script" vh
+    (Pl.ScriptCredential vh) ->
+      prettyAux "script" vh <> prettyStakingCred stakingCred <> PP.colon
     (Pl.PubKeyCredential pkh) ->
-      prettyAux "pubkey" pkh
+      prettyAux "pubkey" pkh <> PP.space <> PP.semi <> PP.space <> prettyPubKeyCred pkh
         <> maybe
           PP.emptyDoc
           ((PP.space <>) . PP.parens . ("wallet #" <>) . PP.pretty)
           (walletPKHashToId pkh)
+        <> PP.colon
   where
     prettyAux :: Show hash => String -> hash -> Doc ann
     prettyAux addressType hash =
@@ -239,4 +244,9 @@ prettyAddressTypeAndHash (Pl.Address addrCr _) =
           PP.space,
           PP.pretty . take 7 . show $ hash
         ]
-        <> PP.colon
+    prettyStakingCred :: Maybe Pl.StakingCredential -> Doc ann
+    prettyStakingCred Nothing = PP.emptyDoc
+    prettyStakingCred (Just sc) = PP.space <> PP.semi <> PP.space <> (PP.pretty . take 7 . show . H.hash) sc
+
+    prettyPubKeyCred :: Pl.PubKeyHash -> Doc ann
+    prettyPubKeyCred pkh = PP.pretty $ take 7 $ show $ H.hash $ Pl.StakingHash $ Pl.PubKeyCredential pkh

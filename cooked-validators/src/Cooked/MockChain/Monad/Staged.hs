@@ -1,3 +1,5 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -22,7 +24,7 @@ import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
 import qualified Data.List.NonEmpty as NE
 import qualified Ledger as Pl
-import qualified Ledger.TimeSlot as Pl
+import qualified Ledger.Scripts as Pl
 import qualified PlutusTx as Pl (FromData)
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
@@ -48,16 +50,16 @@ interpretAndRun = interpretAndRunWith runMockChainT
 --  the 'interpret' function for more.
 type InterpMockChain = MockChainT (WriterT TraceDescr [])
 
--- | The 'interpret' function gives semantics to our traces. One 'StagedMockChain'
---  computation yields a potential list of 'MockChainT' computations, which emmit
---  a description of their operation. Recall a 'MockChainT' is a state and except
---  monad composed:
+-- | The 'interpret' function gives semantics to our traces. One
+--  'StagedMockChain' computation yields a potential list of 'MockChainT'
+--  computations, which emit a description of their operation. Recall a
+--  'MockChainT' is a state and except monad composed:
 --
 --  >     MockChainT (WriterT TraceDescr []) a
 --  > =~= st -> (WriterT TraceDescr []) (Either err (a, st))
 --  > =~= st -> [(Either err (a, st) , TraceDescr)]
 interpret :: StagedMockChain a -> InterpMockChain a
-interpret = flip evalStateT [] . interpLtl
+interpret = flip evalStateT [] . interpLtlAndPruneUnfinished
 
 -- * 'StagedMockChain': An AST for 'MonadMockChain' computations
 
@@ -73,11 +75,18 @@ data MockChainBuiltin a where
     Pl.Address ->
     (Maybe a -> Pl.Value -> Bool) ->
     MockChainBuiltin [(SpendableOut, Maybe a)]
+  UtxosSuchThisAndThat ::
+    (Pl.FromData a) =>
+    (Pl.Address -> Bool) ->
+    (Maybe a -> Pl.Value -> Bool) ->
+    MockChainBuiltin [(SpendableOut, Maybe a)]
+  DatumFromTxOut :: Pl.ChainIndexTxOut -> MockChainBuiltin (Maybe Pl.Datum)
   OwnPubKey :: MockChainBuiltin Pl.PubKeyHash
   -- the following are only available in MonadMockChain, not MonadBlockChain:
   SigningWith :: NE.NonEmpty Wallet -> StagedMockChain a -> MockChainBuiltin a
   AskSigners :: MockChainBuiltin (NE.NonEmpty Wallet)
-  GetSlotConfig :: MockChainBuiltin Pl.SlotConfig
+  GetParams :: MockChainBuiltin Pl.Params
+  LocalParams :: (Pl.Params -> Pl.Params) -> StagedMockChain a -> MockChainBuiltin a
   -- the following are not strictly blockchain specific, but they allow us to
   -- combine several traces into one and to signal failure.
 
@@ -105,10 +114,12 @@ instance MonadFail StagedMockChain where
 -- * 'InterpLtl' instance
 
 instance {-# OVERLAPS #-} Semigroup Attack where
-  f <> g = maybe Nothing f . g
+  -- TODO: should we try to make the entries of the returned list unique (up to
+  -- reordering of MiscConstraints)?
+  f <> g = \mcst skel -> concatMap (f mcst) $ g mcst skel
 
 instance {-# OVERLAPS #-} Monoid Attack where
-  mempty = Just
+  mempty = \_ skel -> [skel]
 
 instance MonadPlus m => MonadPlus (MockChainT m) where
   mzero = lift mzero
@@ -118,8 +129,22 @@ instance InterpLtl Attack MockChainBuiltin InterpMockChain where
   interpBuiltin (ValidateTxSkel skel) =
     get
       >>= msum
-        . map (\(now, later) -> maybe mzero validateTxSkel (now skel) <* put later)
+        . map (uncurry interpretAndTell)
         . nowLaterList
+    where
+      interpretAndTell :: Attack -> [Ltl Attack] -> StateT [Ltl Attack] InterpMockChain Pl.CardanoTx
+      interpretAndTell now later = do
+        mockSt <- lift get
+        msum $
+          map
+            ( \skel' -> do
+                signers <- askSigners
+                lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ ValidateTxSkel skel'
+                tx <- validateTxSkel skel'
+                put later
+                return tx
+            )
+            (now mockSt skel)
   interpBuiltin (SigningWith ws act) = signingWith ws (interpLtl act)
   interpBuiltin (TxOutByRef o) = txOutByRef o
   interpBuiltin GetCurrentSlot = currentSlot
@@ -127,12 +152,23 @@ instance InterpLtl Attack MockChainBuiltin InterpMockChain where
   interpBuiltin GetCurrentTime = currentTime
   interpBuiltin (AwaitTime t) = awaitTime t
   interpBuiltin (UtxosSuchThat a p) = utxosSuchThat a p
+  interpBuiltin (UtxosSuchThisAndThat apred dpred) = utxosSuchThisAndThat apred dpred
+  interpBuiltin (DatumFromTxOut o) = datumFromTxOut o
   interpBuiltin OwnPubKey = ownPaymentPubKeyHash
   interpBuiltin AskSigners = askSigners
-  interpBuiltin GetSlotConfig = slotConfig
+  interpBuiltin GetParams = params
+  interpBuiltin (LocalParams f act) = localParams f (interpLtl act)
   interpBuiltin Empty = mzero
   interpBuiltin (Alt l r) = interpLtl l `mplus` interpLtl r
-  interpBuiltin (Fail msg) = fail msg
+  interpBuiltin (Fail msg) = do
+    signers <- askSigners
+    lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ Fail msg
+    fail msg
+
+-- ** Modalities
+
+-- | A modal mock chain is a mock chain that allows us to use LTL modifications with 'Attack's
+type MonadModalMockChain m = (MonadMockChain m, MonadModal m, Modification m ~ Attack)
 
 -- * 'MonadBlockChain' and 'MonadMockChain' instances
 
@@ -142,6 +178,8 @@ singletonBuiltin b = Instr (Builtin b) Return
 instance MonadBlockChain StagedMockChain where
   validateTxSkel = singletonBuiltin . ValidateTxSkel
   utxosSuchThat a p = singletonBuiltin (UtxosSuchThat a p)
+  utxosSuchThisAndThat apred dpred = singletonBuiltin (UtxosSuchThisAndThat apred dpred)
+  datumFromTxOut = singletonBuiltin . DatumFromTxOut
   txOutByRef = singletonBuiltin . TxOutByRef
   ownPaymentPubKeyHash = singletonBuiltin OwnPubKey
   currentSlot = singletonBuiltin GetCurrentSlot
@@ -152,7 +190,8 @@ instance MonadBlockChain StagedMockChain where
 instance MonadMockChain StagedMockChain where
   signingWith ws act = singletonBuiltin (SigningWith ws act)
   askSigners = singletonBuiltin AskSigners
-  slotConfig = singletonBuiltin GetSlotConfig
+  params = singletonBuiltin GetParams
+  localParams f act = singletonBuiltin (LocalParams f act)
 
 -- * Human Readable Traces
 

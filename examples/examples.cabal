@@ -1,6 +1,6 @@
 cabal-version: 3.4
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.34.6.
 --
 -- see: https://github.com/sol/hpack
 
@@ -22,6 +22,8 @@ library
       Split.ToUPLC
   other-modules:
       Paths_examples
+  autogen-modules:
+      Paths_examples
   hs-source-dirs:
       src
   ghc-options: -Wall -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
@@ -42,12 +44,15 @@ library
     , hspec
     , lens
     , mtl
+    , pirouette >=2.0.0
+    , pirouette-plutusir
     , playground-common
     , plutus-contract
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , plutus-use-cases
@@ -73,8 +78,11 @@ test-suite spec
       SplitUPLCSpec
       UseCaseCrowdfundingSpec
       Paths_examples
+  autogen-modules:
+      Paths_examples
   hs-source-dirs:
       tests
+  ghc-options: -threaded
   build-depends:
       QuickCheck
     , aeson
@@ -93,12 +101,15 @@ test-suite spec
     , hspec
     , lens
     , mtl
+    , pirouette >=2.0.0
+    , pirouette-plutusir
     , playground-common
     , plutus-contract
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , plutus-use-cases

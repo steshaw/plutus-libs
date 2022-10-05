@@ -26,6 +26,10 @@ The rendered Haddock for the current `main` branch can be found at [https://twea
 
 - Example contracts and their test suites written using `cooked-validators`
 
+### [lang-pirouette](lang-pirouette)
+
+- _Experimental instantiation of [pirouette](https://github.com/tweag/pirouette) for PlutusIR_.
+
 ## Developer Tools and Environment
 
 A Nix shell development environment is provided.
@@ -110,7 +114,7 @@ In order to bump plutus, you must:
 
 ### Pre-commit Hooks and CI
 
-Our ci runs `ormolu`, `hlint` and `cabal test` for each of our subprojects.
+Our ci runs `ormolu` and `cabal test` for each of our subprojects.
 In order to help avoid CI failures due to formatting problems, we recommend
 that you install the [pre-commit hook for running ormolu](ci/ormolu-pre-commit-hook.sh).
 To do so, simply copy (or link) the script into `.git/hooks/pre-commit`.

@@ -21,13 +21,13 @@ import Data.Either (isRight)
 import Debug.Trace
 import qualified Ledger
 import qualified Ledger.Ada as Ada
-import qualified Ledger.Contexts as Validation
 import qualified Ledger.TimeSlot as TimeSlot
 import qualified Ledger.Typed.Scripts as TScripts
 import qualified Ledger.Value as Value
 import qualified Plutus.Contract.StateMachine.ThreadToken as ThreadToken
 import Plutus.Contracts.Crowdfunding
 import qualified Plutus.Contracts.Currency as Currency
+import qualified Plutus.V1.Ledger.Contexts as Validation
 import qualified Plutus.V1.Ledger.Scripts as Scripts
 import qualified PlutusTx (compile)
 import qualified PlutusTx.Eq as Pl
@@ -45,7 +45,7 @@ typedValidator =
     $$(PlutusTx.compile [||mkValidator||])
     $$(PlutusTx.compile [||wrap||])
   where
-    wrap = TScripts.wrapValidator
+    wrap = TScripts.mkUntypedValidator
 
 data Crowdfunding
 
@@ -80,7 +80,7 @@ paysCampaign c w val =
     signs w $
       validateTxConstrOpts
         (def {autoSlotIncrease = False})
-        [PaysScript (typedValidator c) (Ledger.PaymentPubKeyHash (walletPKHash w)) val]
+        [paysScript (typedValidator c) (Ledger.PaymentPubKeyHash (walletPKHash w)) val]
 
 -- | Retrieve funds as being the owner
 retrieveFunds :: (MonadMockChain m) => Ledger.POSIXTime -> Campaign -> Wallet -> m ()
@@ -90,7 +90,7 @@ retrieveFunds t c owner = do
     signs owner $
       validateTxConstrOpts
         (def {autoSlotIncrease = False})
-        ( (ValidateIn (collectionRange c) : map (SpendsScript (typedValidator c) Collect) funds)
+        ( (ValidateIn (collectionRange c) : map (SpendsScript (typedValidator c) Collect) (fst <$> funds))
             :=>: [paysPK (walletPKHash owner) (mconcat $ map (sOutValue . fst) funds)]
         )
 

@@ -1,4 +1,4 @@
-{ 
+{
   sources ? import ./sources.nix {},
 
   # Bring in our pinned nixpkgs, but also brings in iohk's modiied nixpkgs
@@ -28,7 +28,7 @@ let
       }];
     }).components.exes;
     [haskell-language-server haskell-language-server-wrapper];
-in { 
+in {
   # We will split our dependencies into those deps that are needed for
   # building and testing; and those that are needed for development
   # the purpose is to keep CI happier and make it as fast as possible.
@@ -42,6 +42,10 @@ in {
         git
         cacert # git SSL
         pkg-config # required by libsystemd-journal
+        openssl # required by HsOpenSSL required indirectly by cooked-validators
+
+        # We need cvc4 at least to run pirouette
+        cvc4
 
         # haskell development tools pulled from regular nixpkgs
         hpack
@@ -51,9 +55,12 @@ in {
         # iohk-specific stuff that we require
         iohkpkgs.haskell-nix.internal-cabal-install
         iohkpkgs.haskell-nix.compiler.ghc810420210212
+        iohkpkgs.secp256k1
      ] ++ lib.optional (stdenv.isLinux) systemd.dev;
 
   # Besides what's needed for building, we also want our instance of the
   # the haskell-language-server
   dev-deps = [ custom-hls ];
+
+  LD_LIBRARY_PATH = with rawpkgs; "${zlib}/lib:${lzma.out}/lib";
 }

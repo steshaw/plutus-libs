@@ -17,16 +17,16 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Writer
-import Cooked.Attack
-import Cooked.Ltl
 import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
+import Data.Function (on)
 import Data.Kind
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromJust)
 import qualified Ledger as Pl
 import qualified Ledger.Credential as Pl
+import qualified Ledger.Scripts as Pl
 import qualified Ledger.TimeSlot as Pl
 import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator, validatorAddress)
 import qualified PlutusTx as Pl (FromData)
@@ -63,6 +63,15 @@ class (MonadFail m) => MonadBlockChain m where
     Pl.Address ->
     UtxoPredicate a ->
     m [(SpendableOut, Maybe a)]
+
+  utxosSuchThisAndThat ::
+    (Pl.FromData a) =>
+    (Pl.Address -> Bool) ->
+    UtxoPredicate a ->
+    m [(SpendableOut, Maybe a)]
+
+  -- | Returns the datum contained in a utxo or "Nothing" if there is none
+  datumFromTxOut :: Pl.ChainIndexTxOut -> m (Maybe Pl.Datum)
 
   -- | Returns an output given a reference to it
   txOutByRef :: Pl.TxOutRef -> m (Maybe Pl.TxOut)
@@ -107,6 +116,47 @@ spendableRef txORef = do
   Just txOut <- txOutByRef txORef
   return (txORef, fromJust (Pl.fromTxOut txOut))
 
+-- | Some values of type "SpendableOut" have no explicit datum in their
+-- "ChainIndexTxOut" but the datum hash instead. When used in cooked
+-- constraints, this results in a runtime error. This function modifies the
+-- value to replace the datum hash by the datum by looking it up in the state
+-- of the block chain.
+--
+-- Outputs obtained from a "CardanoTx" (using "getCardanoTxOutRefs") have datum
+-- hashes instead of datums. If you want to use them in spend constraints, you
+-- first have to preprocess them with this function.
+--
+-- As a user though, when writing endpoints and traces, you will prefer to use
+-- the "spOutsFromCardanoTx" helper if you need to extract a "SpendableOut"
+-- from a "CardanoTx" to use it in a spend constraint.
+spOutResolveDatum ::
+  MonadBlockChain m =>
+  SpendableOut ->
+  m SpendableOut
+spOutResolveDatum (txOutRef, chainIndexTxOut@(Pl.ScriptChainIndexTxOut _ _ (Left _) _)) = do
+  mDatum <- datumFromTxOut chainIndexTxOut
+  case mDatum of
+    Nothing -> fail "datum hash not found in block chain state"
+    Just datum ->
+      return
+        (txOutRef, chainIndexTxOut {Pl._ciTxOutDatum = Right datum})
+spOutResolveDatum spOut = return spOut
+
+-- | Retrieve the ordered list of "SpendableOutput" corresponding to each
+-- output of the given "CardanoTx". These "SpendableOutput" are processed to
+-- remove unresolved datum hashes with "spOutResolveDatum" so that they can be
+-- used in spending constraints.
+--
+-- This is useful when writing endpoints and/or traces to fetch utxos of
+-- interest right from the start and avoid querying the chain for them
+-- afterwards using "utxosSuchThat" functions.
+spOutsFromCardanoTx :: MonadBlockChain m => Pl.CardanoTx -> m [SpendableOut]
+spOutsFromCardanoTx cardanoTx = forM (Pl.getCardanoTxOutRefs cardanoTx) $
+  \(txOut, txOutRef) ->
+    case Pl.fromTxOut txOut of
+      Just chainIndexTxOut -> spOutResolveDatum (txOutRef, chainIndexTxOut)
+      Nothing -> fail "could not extract ChainIndexTxOut"
+
 -- | Select public-key UTxOs that might contain some datum but no staking address.
 -- This is just a simpler variant of 'utxosSuchThat'. If you care about staking credentials
 -- you must use 'utxosSuchThat' directly.
@@ -141,6 +191,19 @@ scriptUtxosSuchThat v predicate =
   map (second fromJust)
     <$> utxosSuchThat
       (Pl.validatorAddress v)
+      (maybe (const False) predicate)
+
+-- | Same as above, but ignoring the StakingCredential in the address after filtering.
+scriptUtxosSuchThatIgnoringSCred ::
+  (MonadBlockChain m, Pl.FromData (Pl.DatumType tv)) =>
+  Pl.TypedValidator tv ->
+  -- | Slightly different from 'UtxoPredicate': here we're guaranteed to have a datum present.
+  (Pl.DatumType tv -> Pl.Value -> Bool) ->
+  m [(SpendableOut, Pl.DatumType tv)]
+scriptUtxosSuchThatIgnoringSCred v predicate =
+  map (second fromJust)
+    <$> utxosSuchThisAndThat
+      (((==) `on` Pl.addressCredential) (Pl.validatorAddress v))
       (maybe (const False) predicate)
 
 -- | Returns the output associated with a given reference
@@ -205,8 +268,12 @@ class (MonadBlockChain m) => MonadMockChain m where
   -- | Returns the current set of signing wallets.
   askSigners :: m (NE.NonEmpty Wallet)
 
-  -- | Returns the slot configuration of the mock chain.
-  slotConfig :: m Pl.SlotConfig
+  -- | Returns the protocol parameters of the mock chain, which includes
+  -- the slot config.
+  params :: m Pl.Params
+
+  -- | Modify the parameters according to some function
+  localParams :: (Pl.Params -> Pl.Params) -> m a -> m a
 
 -- | Runs a given block of computations signing transactions as @w@.
 as :: (MonadMockChain m) => m a -> Wallet -> m a
@@ -216,10 +283,15 @@ as ma w = signingWith (w NE.:| []) ma
 signs :: (MonadMockChain m) => Wallet -> m a -> m a
 signs = flip as
 
--- ** Modalities
+-- | Return the 'Pl.SlotConfig' contained within the current 'Pl.Params'
+slotConfig :: (MonadMockChain m) => m Pl.SlotConfig
+slotConfig = Pl.pSlotConfig <$> params
 
--- | A modal mock chain is a mock chain that allows us to use LTL modifications with 'Attack's
-type MonadModalMockChain m = (MonadMockChain m, MonadModal m, Modification m ~ Attack)
+-- | Set higher limits on transaction size and execution units.
+-- This can be used to work around @MaxTxSizeUTxO@ and @ExUnitsTooBigUTxO@ errors.
+-- Note that if you need this your Plutus script will probably not validate on Mainnet.
+allowBigTransactions :: (MonadMockChain m) => m a -> m a
+allowBigTransactions = localParams Pl.allowBigTransactions
 
 -- ** Deriving further 'MonadBlockChain' instances
 
@@ -237,6 +309,8 @@ newtype AsTrans t (m :: Type -> Type) a = AsTrans {getTrans :: t m a}
 instance (MonadTrans t, MonadBlockChain m, MonadFail (t m)) => MonadBlockChain (AsTrans t m) where
   validateTxSkel = lift . validateTxSkel
   utxosSuchThat addr f = lift $ utxosSuchThat addr f
+  utxosSuchThisAndThat addrPred datumPred = lift $ utxosSuchThisAndThat addrPred datumPred
+  datumFromTxOut = lift . datumFromTxOut
   ownPaymentPubKeyHash = lift ownPaymentPubKeyHash
   txOutByRef = lift . txOutByRef
   currentSlot = lift currentSlot
@@ -252,7 +326,8 @@ f `unliftOn` act = liftWith (\run -> f (run act)) >>= restoreT . pure
 instance (MonadTransControl t, MonadMockChain m, MonadFail (t m)) => MonadMockChain (AsTrans t m) where
   signingWith wallets (AsTrans act) = AsTrans $ signingWith wallets `unliftOn` act
   askSigners = lift askSigners
-  slotConfig = lift slotConfig
+  params = lift params
+  localParams f (AsTrans act) = AsTrans $ localParams f `unliftOn` act
 
 deriving via (AsTrans (WriterT w) m) instance (Monoid w, MonadBlockChain m) => MonadBlockChain (WriterT w m)
 

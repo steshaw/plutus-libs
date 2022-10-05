@@ -29,9 +29,9 @@ jobs:
         path: |
           ~/.cabal/store
           dist-newstyle
-        key: cabal-cache-${{ github.sha }}
+        key: cabal-cache-0-${{ github.sha }}
         restore-keys: |
-          cabal-cache
+          cabal-cache-0-
 
     - name: Accessing the result cache
       uses: actions/cache@v2
@@ -66,8 +66,8 @@ jobs:
     - name: Check result
       run: |
         is_ok=true
-        for proj in "examples" "cooked-validators"; do
-          for step in "hpack" "ormolu" "cabal-build" "cabal-test" "hlint"; do
+        for proj in "examples" "cooked-validators" "pirouette-plutusir"; do
+          for step in "hpack" "ormolu" "cabal-build" "cabal-test"; do
             echo "!! [$proj]: output from $step"
             cat $proj-$step.out
             res=$(cat $proj-$step.res | cut -d':' -f2)
@@ -79,7 +79,7 @@ jobs:
 
         ## Because there will be a lot of tests, we print a summary of the results
         echo "Summary of results (1 is failure)"
-        for proj in "examples" "cooked-validators"; do
+        for proj in "examples" "cooked-validators" "pirouette-plutusir"; do
           echo "Summary for: $proj"
           cat ${proj}-*.res
         done

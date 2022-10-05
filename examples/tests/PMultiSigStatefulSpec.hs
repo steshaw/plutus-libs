@@ -19,6 +19,7 @@ import Data.Default
 import Data.Either (isLeft, isRight)
 import Data.Function (on)
 import Data.List (nub, nubBy)
+import Data.Maybe
 import Data.Typeable
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
@@ -91,7 +92,7 @@ mkProposal reqSigs pmt = do
                      -- We don't have SpendsPK or PaysPK wrt the wallet `w`
                      -- because the balancing mechanism chooses the same (first) output
                      -- we're working on.
-                     PaysScript
+                     paysScript
                        (pmultisig params)
                        (Accumulator pmt [])
                        (minAda <> paymentValue pmt <> threadToken)
@@ -107,13 +108,13 @@ mkProposal reqSigs pmt = do
 --   on top of their payment. This is to avoid complex scenarios where someone signed
 --   twice, or even an attack where the attacker would execute the mkPay transaction
 --   but keep all the locked ada to themselves.
-mkSign :: MonadBlockChain m => Params -> Payment -> Pl.PrivateKey -> m ()
+mkSign :: MonadBlockChain m => Params -> Payment -> PrivateKey -> m ()
 mkSign params pmt sk = do
   pkh <- ownPaymentPubKeyHash
   void $
     validateTxConstrOpts
       (def {adjustUnbalTx = True})
-      [PaysScript (pmultisig params) (Sign pkh sig) mkSignLockedCost]
+      [paysScript (pmultisig params) (Sign pkh sig) mkSignLockedCost]
   where
     sig = Pl.sign (Pl.sha2_256 $ packPayment pmt) sk ""
 
@@ -126,23 +127,23 @@ mkSign params pmt sk = do
 
 mkCollect :: MonadMockChain m => Payment -> Params -> m ()
 mkCollect thePayment params = signs (wallet 1) $ do
-  [initialProp] <- scriptUtxosSuchThat (pmultisig params) isProposal
+  [(initialProp, _)] <- scriptUtxosSuchThat (pmultisig params) isProposal
   signatures <- nubBy ((==) `on` snd) <$> scriptUtxosSuchThat (pmultisig params) isSign
   let signatureValues = mconcat $ map (sOutValue . fst) signatures
   void $
     validateTxConstr $
       ( SpendsScript (pmultisig params) () initialProp :
-        (SpendsScript (pmultisig params) () <$> signatures)
+        (SpendsScript (pmultisig params) () <$> (fst <$> signatures))
       )
-        :=>: [ PaysScript
+        :=>: [ paysScript
                  (pmultisig params)
                  (Accumulator thePayment (signPk . snd <$> signatures))
-                 (paymentValue thePayment <> sOutValue (fst initialProp) <> signatureValues)
+                 (paymentValue thePayment <> sOutValue initialProp <> signatureValues)
              ]
 
 mkPay :: MonadMockChain m => Payment -> Params -> Pl.TxOutRef -> m ()
 mkPay thePayment params tokenOutRef = signs (wallet 1) $ do
-  [accumulated] <- scriptUtxosSuchThat (pmultisig params) isAccumulator
+  [(accumulated, _)] <- scriptUtxosSuchThat (pmultisig params) isAccumulator
   void $
     validateTxConstr $
       -- We payout all the gathered funds to the receiver of the payment, including the minimum ada
@@ -150,7 +151,7 @@ mkPay thePayment params tokenOutRef = signs (wallet 1) $ do
       [ SpendsScript (pmultisig params) () accumulated,
         mints [threadTokenPolicy tokenOutRef threadTokenName] $ Pl.negate $ paramsToken params
       ]
-        :=>: [paysPK (paymentRecipient thePayment) (sOutValue (fst accumulated) <> Pl.negate (paramsToken params))]
+        :=>: [paysPK (paymentRecipient thePayment) (sOutValue accumulated <> Pl.negate (paramsToken params))]
 
 -- *** Auxiliary Functions
 
@@ -180,7 +181,7 @@ tests =
 
 sampleTrace1 :: TestTree
 sampleTrace1 =
-  testCase "Example Trivial Trace" $ testSucceeds exampleMtrace
+  testCase "Example Trivial Trace" $ testSucceeds (allowBigTransactions exampleMtrace)
 
 exampleMtrace :: MonadMockChain m => m ()
 exampleMtrace = do
@@ -229,16 +230,17 @@ sampleGroup1 =
       [ testProperty "Can execute payment with enough signatures" $
           QC.forAll
             successParams
-            (\p -> testSucceeds @QC.Property $ propose p >>= execute p),
+            (\p -> testSucceeds @QC.Property $ allowBigTransactions $ propose p >>= execute p),
         testProperty "Cannot execute payment without enough signatures" $
-          QC.forAll failureParams (\p -> testFails @QC.Property $ propose p >>= execute p),
+          QC.forAll failureParams (\p -> testFails @QC.Property $ allowBigTransactions $ propose p >>= execute p),
         testProperty "Cannot duplicate token over \\Cref{sec:simple-traces}" $
           QC.forAll
             successParams
-            ( \p -> testFails @QC.Property $ do
-                i <- propose p
-                w3utxos <- pkUtxos (walletPKHash $ wallet 9)
-                somewhere (dupTokenAttack (head w3utxos) i) (execute p i)
+            ( \p -> testFails @QC.Property $
+                allowBigTransactions $ do
+                  i <- propose p
+                  w3utxos <- pkUtxos (walletPKHash $ wallet 9)
+                  somewhere (\_ sk -> maybeToList $ dupTokenAttack (head w3utxos) i sk) (execute p i)
             )
       ]
 
@@ -316,7 +318,7 @@ instance Eq DupTokenAttacked where
 -- uses 'txInfoOutputs' recklessly, instead of 'getContinuingOutputs',
 -- chances are said script will be vulnerable.
 datumHijackingTrace :: TestTree
-datumHijackingTrace = testCase "not vulnerable to datum hijacking" $ testFails datumHijacking
+datumHijackingTrace = testCase "not vulnerable to datum hijacking" $ testFails $ allowBigTransactions datumHijacking
 
 attacker :: Wallet
 attacker = wallet 9
@@ -340,18 +342,18 @@ trPayment (Payment val dest) = HJ.Payment val dest
 
 mkFakeCollect :: MonadBlockChain m => Payment -> Params -> m ()
 mkFakeCollect thePayment params = do
-  [initialProp] <- scriptUtxosSuchThat (pmultisig params) isProposal
+  [(initialProp, _)] <- scriptUtxosSuchThat (pmultisig params) isProposal
   signatures <- nubBy ((==) `on` snd) <$> scriptUtxosSuchThat (pmultisig params) isSign
   let signatureValues = mconcat $ map (sOutValue . fst) signatures
   void $
     validateTxConstr $
       ( SpendsScript (pmultisig params) () initialProp :
-        (SpendsScript (pmultisig params) () <$> signatures)
+        (SpendsScript (pmultisig params) () <$> (fst <$> signatures))
       )
-        :=>: [ PaysScript
+        :=>: [ paysScript
                  fakeValidator
                  (HJ.Accumulator (trPayment thePayment) (signPk . snd <$> signatures))
-                 (paymentValue thePayment <> sOutValue (fst initialProp) <> signatureValues)
+                 (paymentValue thePayment <> sOutValue initialProp <> signatureValues)
              ]
 
 -- * Datum Hijacking Attack from 'Cooked.Attack'
@@ -362,7 +364,7 @@ datumHijackingTrace' =
     testFailsFrom'
       isCekEvaluationFailure
       def
-      datumHijacking'
+      $ allowBigTransactions datumHijacking'
 
 datumHijacking' :: MonadModalMockChain m => m ()
 datumHijacking' =
