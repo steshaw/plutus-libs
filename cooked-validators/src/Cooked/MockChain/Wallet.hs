@@ -162,8 +162,8 @@ distributionFromList = InitialDistribution . M.fromList
 initialDistribution' :: [(Wallet, [Pl.Value])] -> InitialDistribution
 initialDistribution' = (def <>) . distributionFromList
 
-initialTxFor :: InitialDistribution -> Pl.Tx
-initialTxFor initDist
+initialTxFor :: Pl.Params -> InitialDistribution -> Pl.Tx
+initialTxFor lparams initDist
   | not $ validInitialDistribution initDist =
     error "Not all UTxOs have at least minAda; this initial distribution is unusable"
   | otherwise =
@@ -172,6 +172,9 @@ initialTxFor initDist
         Pl.txOutputs = concatMap (\(w, vs) -> map (initUtxosFor w) vs) initDist'
       }
   where
-    initUtxosFor w v = Pl.TxOut (walletAddress w) v Nothing
+    initUtxosFor w v =
+      case Pl.toTxOut (Pl.pNetworkId lparams) (Pl.PublicKeyChainIndexTxOut (walletAddress w) v Nothing Nothing) of
+        Left _ -> error "initialTxFor: cannot generate initial TxOut for wallet"
+        Right txout -> txout
 
     initDist' = M.toList $ distribution initDist

@@ -5,15 +5,15 @@
 
 module Cooked.Tx.Constraints.Pretty where
 
+import Control.Lens (view)
 import Cooked.MockChain.UtxoState
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints.Type
 import Data.Char
 import Data.Default
 import Data.Maybe (catMaybes, mapMaybe)
-import qualified Ledger as Pl hiding (unspentOutputs)
-import qualified Ledger.Scripts as Pl
-import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator, validatorScript)
+import qualified Ledger as Pl hiding (mintingPolicyHash, unspentOutputs)
+import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator)
 import qualified Plutus.Script.Utils.V1.Scripts as Pl
 import qualified Plutus.Script.Utils.V1.Typed.Scripts.Validators as PlU
 import Prettyprinter (Doc, (<+>))
@@ -57,7 +57,7 @@ prettyOutConstraint (PaysPKWithDatum pkh stak dat val) =
 
 prettyMiscConstraint :: MiscConstraint -> Doc ann
 prettyMiscConstraint (SpendsPK out) =
-  let (ppAddr, mppVal) = prettyTxOut $ Pl.toTxOut $ snd out
+  let (ppAddr, mppVal) = prettyTxOut $ snd out
    in prettyEnum "SpendsPK" "-" $ catMaybes [Just ppAddr, mppVal]
 prettyMiscConstraint (Mints mr policies val) =
   prettyEnum "Mints" "-" $
@@ -82,14 +82,15 @@ prettyMintingPolicy = prettyHash . Pl.mintingPolicyHash
 
 prettyOutputDatum :: (Show (Pl.DatumType a)) => Pl.TypedValidator a -> (SpendableOut, Pl.DatumType a) -> Doc ann
 prettyOutputDatum _ (out, dat) =
-  let (ppAddr, mppVal) = prettyTxOut $ Pl.toTxOut $ snd out
+  let (ppAddr, mppVal) = prettyTxOut $ snd out
    in PP.align $
         PP.vsep $
           catMaybes
             [Just $ "Output" <+> "at" <+> ppAddr, mppVal, Just $ "Datum:" <+> prettyDatum dat]
 
-prettyTxOut :: Pl.TxOut -> (Doc ann, Maybe (Doc ann))
-prettyTxOut tout = (prettyAddressTypeAndHash $ Pl.txOutAddress tout, mPrettyValue $ Pl.txOutValue tout)
+prettyTxOut :: Pl.ChainIndexTxOut -> (Doc ann, Maybe (Doc ann))
+prettyTxOut tout =
+  (prettyAddressTypeAndHash $ (view Pl.ciTxOutAddress) tout, mPrettyValue $ (view Pl.ciTxOutValue) tout)
 
 prettyTypedValidator :: Pl.TypedValidator a -> Doc ann
 prettyTypedValidator = prettyAddressTypeAndHash . Pl.scriptHashAddress . PlU.validatorHash

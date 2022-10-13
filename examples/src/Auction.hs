@@ -20,14 +20,14 @@
 -- | Arrange an auction with a preset deadline and minimum bid.
 module Auction where
 
-import qualified Ledger as Pl
+import qualified Ledger as Pl hiding (scriptCurrencySymbol)
 import qualified Ledger.Ada as Ada
 import qualified Ledger.Interval as Interval
-import Ledger.Scripts as Pl
+import Ledger.Scripts as Pl hiding (scriptCurrencySymbol)
 import Ledger.Typed.Scripts as Scripts
 import qualified Ledger.Value as Value
-import qualified Plutus.Script.Utils.V1.Scripts as Pl (scriptCurrencySymbol)
-import qualified Plutus.V1.Ledger.Api as Api
+import qualified Plutus.Script.Utils.V1.Scripts as Pl
+import qualified Plutus.V1.Ledger.Api as V1
 import qualified PlutusTx
 import PlutusTx.Prelude
 import qualified Prelude as Haskell
@@ -162,18 +162,18 @@ PlutusTx.unstableMakeIsData ''Action
 -- exactly one token is burned.
 {-# INLINEABLE mkPolicy #-}
 mkPolicy :: PolicyParams -> Pl.Address -> Pl.ScriptContext -> Bool
-mkPolicy (PolicyParams tName lotOref lot) validator ctx
+mkPolicy (PolicyParams tName lotOref plot) validator ctx
   | amnt == Just 1 =
     traceIfFalse
       "Lot UTxO not consumed"
       (any (\i -> Pl.txInInfoOutRef i == lotOref) $ Pl.txInfoInputs txi)
       && case filter
-        (\o -> Pl.txOutAddress o == validator)
+        (\o -> V1.txOutAddress o == validator)
         (Pl.txInfoOutputs txi) of
         [o] ->
           traceIfFalse
             "Validator does not receive the lot and the thread token of freshly opened auction"
-            (Pl.txOutValue o `Value.geq` (lot <> token))
+            (V1.txOutValue o `Value.geq` (plot <> token))
             && traceIfFalse
               "Validator not in 'NoBids'-state on freshly opened auction"
               (outputAuctionState txi o == Just NoBids)
@@ -199,14 +199,14 @@ threadTokenName = Value.tokenName "AuctionToken"
 
 threadTokenPolicy :: PolicyParams -> Scripts.MintingPolicy
 threadTokenPolicy pars =
-  Api.mkMintingPolicyScript $
+  V1.mkMintingPolicyScript $
     $$(PlutusTx.compile [||Scripts.mkUntypedMintingPolicy . mkPolicy||])
       `PlutusTx.applyCode` PlutusTx.liftCode pars
 
 threadTokenAssetClassFromOrefAndLot :: Pl.TxOutRef -> Pl.Value -> Value.AssetClass
-threadTokenAssetClassFromOrefAndLot lotOutRef lot =
+threadTokenAssetClassFromOrefAndLot lotOutRef plot =
   Value.assetClass
-    (Pl.scriptCurrencySymbol $ threadTokenPolicy $ PolicyParams threadTokenName lotOutRef lot)
+    (Pl.scriptCurrencySymbol $ threadTokenPolicy $ PolicyParams threadTokenName lotOutRef plot)
     threadTokenName
 
 -- * The validator and its helpers
@@ -221,9 +221,9 @@ hammerTimeRange a = Interval.from (bidDeadline a)
 
 -- | Extract an auction state from an output (if it has one)
 {-# INLINEABLE outputAuctionState #-}
-outputAuctionState :: Pl.TxInfo -> Pl.TxOut -> Maybe AuctionState
+outputAuctionState :: Pl.TxInfo -> V1.TxOut -> Maybe AuctionState
 outputAuctionState txi o = do
-  h <- Pl.txOutDatum o
+  h <- V1.txOutDatumHash o
   Pl.Datum d <- Pl.findDatum h txi
   PlutusTx.fromBuiltinData d
 

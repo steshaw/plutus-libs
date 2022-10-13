@@ -20,6 +20,7 @@ import qualified Ledger as L hiding (validatorHash)
 import qualified Ledger.Ada as L
 import qualified Ledger.Typed.Scripts as L
 import qualified Ledger.Value as L
+import qualified Plutus.V1.Ledger.Api as V1
 import qualified Plutus.V1.Ledger.Scripts as L
 import qualified PlutusTx as Pl
 import qualified PlutusTx.Prelude as Pl
@@ -88,14 +89,14 @@ txRelock v = do
 
 -- | Try to extract a datum from an output.
 {-# INLINEABLE outputDatum #-}
-outputDatum :: L.TxInfo -> L.TxOut -> Maybe MockDatum
+outputDatum :: L.TxInfo -> V1.TxOut -> Maybe MockDatum
 outputDatum txi o = do
-  h <- L.txOutDatum o
+  h <- V1.txOutDatumHash o
   L.Datum d <- L.findDatum h txi
   Pl.fromBuiltinData d
 
 {-# INLINEABLE mkMockValidator #-}
-mkMockValidator :: (L.ScriptContext -> [L.TxOut]) -> MockDatum -> () -> L.ScriptContext -> Bool
+mkMockValidator :: (L.ScriptContext -> [V1.TxOut]) -> MockDatum -> () -> L.ScriptContext -> Bool
 mkMockValidator getOutputs datum _ ctx =
   let txi = L.scriptContextTxInfo ctx
    in case datum of
@@ -107,7 +108,7 @@ mkMockValidator getOutputs datum _ ctx =
                 (outputDatum txi o Pl.== Just SecondLock)
                 && Pl.traceIfFalse
                   "not re-locking the right amout"
-                  (L.txOutValue o == lockValue)
+                  (V1.txOutValue o == lockValue)
             _ -> Pl.trace "there must be a output re-locked" False
         SecondLock -> False
 

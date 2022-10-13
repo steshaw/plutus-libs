@@ -28,10 +28,8 @@ import qualified Data.Set as S
 import Data.Text (Text)
 import Data.Tuple.Extra (secondM)
 import Language.Pirouette.PlutusIR.Syntax
-import Pirouette.Monad
 import Pirouette.Term.Syntax
 import qualified Pirouette.Term.Syntax.SystemF as SystF
-import Pirouette.Transformations.Term
 import PlutusCore (DefaultUni (..))
 import qualified PlutusCore as P
 import qualified PlutusCore.Pretty as P
@@ -473,9 +471,9 @@ trTerm mn t = do
     goHead ::
       PIR.Term tyname name DefaultUni P.DefaultFun loc ->
       WriterT (Decls PlutusIR) (TrM loc) (Term PlutusIR)
-    goHead (PIR.Apply _ tfun targ) = error "goHead: PIR.Apply is supposd to be handled by goSpine"
-    goHead (PIR.TyInst _ t0 ty) = error "goHead: PIR.TyInst is supposed to be handled by goSpine"
-    goHead (PIR.Builtin _ f) = error "goHead: PIR.Builtin is supposed to be handled by go"
+    goHead (PIR.Apply _ _tfun _targ) = error "goHead: PIR.Apply is supposd to be handled by goSpine"
+    goHead (PIR.TyInst _ _t0 _ty) = error "goHead: PIR.TyInst is supposed to be handled by goSpine"
+    goHead (PIR.Builtin _ _f) = error "goHead: PIR.Builtin is supposed to be handled by go"
     goHead (PIR.Var _ n)
       -- See [HACK: Translation of 'Bool']
       -- ## | toName n == "True" =

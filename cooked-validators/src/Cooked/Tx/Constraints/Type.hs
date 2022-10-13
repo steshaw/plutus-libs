@@ -15,7 +15,6 @@ import qualified Ledger as Pl hiding (unspentOutputs)
 import qualified Ledger.Constraints as Pl
 import qualified Ledger.Constraints.OffChain as Pl
 import qualified Ledger.Credential as Pl
-import qualified Ledger.Scripts as Pl
 import qualified Ledger.Typed.Scripts as Pl (DatumType, RedeemerType, TypedValidator)
 import qualified PlutusTx as Pl
 import qualified PlutusTx.Eq as Pl
@@ -27,18 +26,20 @@ type SpendableOut = (Pl.TxOutRef, Pl.ChainIndexTxOut)
 
 -- | Accesses the 'Pl.Value' within a 'SpendableOut'
 sOutValue :: SpendableOut -> Pl.Value
-sOutValue = Pl.txOutValue . Pl.toTxOut . snd
+sOutValue = (view Pl.ciTxOutValue) . snd
 
 -- | Accesses the 'Pl.Address' within a 'SpendableOut'
 sOutAddress :: SpendableOut -> Pl.Address
-sOutAddress = Pl.txOutAddress . Pl.toTxOut . snd
+sOutAddress = (view Pl.ciTxOutAddress) . snd
 
 -- | Accesses a potential 'Pl.DatumHash' within a 'SpendableOut'; note that
 --  the existence (or not) of a datum hash /DOES NOT/ indicate the 'SpendableOut'
 --  belongs to a script or a public key; you must pattern match on the result of
 --  'sOutAddress' or use one of 'sBelongsToPubKey' or 'sBelongsToScript' to distinguish that.
 sOutDatumHash :: SpendableOut -> Maybe Pl.DatumHash
-sOutDatumHash = Pl.txOutDatum . Pl.toTxOut . snd
+sOutDatumHash (_, Pl.PublicKeyChainIndexTxOut _ _ (Just (dh, _)) _) = Just dh
+sOutDatumHash (_, Pl.ScriptChainIndexTxOut _ _ (dh, _) _ _) = Just dh
+sOutDatumHash _ = Nothing
 
 -- | If a 'SpendableOut' belongs to a public key, return its hash.
 sBelongsToPubKey :: SpendableOut -> Maybe Pl.PubKeyHash

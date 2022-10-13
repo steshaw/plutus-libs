@@ -37,7 +37,6 @@ import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
 import qualified Ledger
 import qualified Ledger.Ada as Ada
-import qualified Ledger.Scripts as Ledger
 import qualified Ledger.Typed.Scripts as Scripts
 -- The PlutusTx and its prelude provide the functions we can use for on-chain computations.
 
@@ -234,7 +233,7 @@ validatePayment Params {..} (Accumulator payment signees) _ ctx
     verifySignees signees' =
       traceIfFalse "U0" (uniqueSignees' == signees') -- no duplicates in the output
         && traceIfFalse "U1" (uniqueSignees' == nub (signees <> newSignees)) -- the new signatures set is the union of the existing sigs and the added ones
-        && traceIfFalse "U1" allInputsRelevant -- no irrelevant inputs (like other accumulators or double signatures) are being consumed
+        && traceIfFalse "U2" allInputsRelevant -- no irrelevant inputs (like other accumulators or double signatures) are being consumed
       where
         uniqueSignees' = nub signees'
 
@@ -242,27 +241,38 @@ validatePayment Params {..} (Accumulator payment signees) _ ctx
           mapMaybe (findDatum txInfo) $
             filter (/= fromJust (Validation.findOwnInput ctx)) $ txInfoInputs txInfo
 
-        newSignees = mapMaybe extractSig otherInputs
+        extractNewSignees [] acc = acc
+        extractNewSignees ((Accumulator {}) : tl) acc = extractNewSignees tl acc
+        extractNewSignees ((Sign sigPkh s) : tl) acc =
+          case AssocMap.lookup sigPkh pmspSignatories of
+            Just pk
+              | (not $ sigPkh `elem` signees) && (verifySig pk (sha2_256 $ packPayment payment) s) ->
+                extractNewSignees tl (sigPkh : acc)
+            _ -> extractNewSignees tl acc
+
+        newSignees = extractNewSignees otherInputs []
 
         allInputsRelevant = length newSignees == length otherInputs
 
-        extractSig Accumulator {} = Nothing
-        extractSig (Sign signPkh s)
-          | signPkh `elem` signees = Nothing -- Already signed this payment -- wrong
-          | otherwise =
-            case AssocMap.lookup signPkh pmspSignatories of
-              Nothing -> Nothing -- Not a signatory -- wrong
-              Just pk ->
-                if verifySig pk (sha2_256 $ packPayment payment) s
-                  then Just signPkh
-                  else Nothing -- Sig verification failed -- wrong
+-- Buggy with new version of plutus
+-- newSignees = mapMaybe extractSig otherInputs
+-- extractSig Accumulator {} = Nothing
+-- extractSig (Sign signPkh s)
+--   | signPkh `elem` signees = Nothing -- Already signed this payment -- wrong
+--   | otherwise =
+--     case AssocMap.lookup signPkh pmspSignatories of
+--       Nothing -> Nothing -- Not a signatory -- wrong
+--       Just pk ->
+--         if verifySig pk (sha2_256 $ packPayment payment) s
+--           then Just signPkh
+--           else Nothing -- Sig verification failed -- wrong
 
 -- Here's a wrapper to verify a signature. It is important that the parameters to verifySignature
 -- are, in order: pk, msg then signature.
 {-# INLINEABLE verifySig #-}
 verifySig :: Ledger.PubKey -> BuiltinByteString -> Ledger.Signature -> Bool
 verifySig pk msg s =
-  verifySignature (Api.getLedgerBytes $ Ledger.getPubKey pk) msg (Ledger.getSignature s)
+  verifyEd25519Signature (Api.getLedgerBytes $ Ledger.getPubKey pk) msg (Ledger.getSignature s)
 
 -- Finally, we wrap everything up and make the script available.
 

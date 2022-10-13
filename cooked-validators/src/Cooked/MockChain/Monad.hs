@@ -12,6 +12,7 @@
 
 module Cooked.MockChain.Monad where
 
+import qualified Cardano.Api.Shelley as C
 import Control.Arrow (second)
 import Control.Monad.Reader
 import Control.Monad.State
@@ -51,6 +52,8 @@ class (MonadFail m) => MonadBlockChain m where
   --  which inputs to add in case the output-side of the balancing equation is bigger.
   --
   --  The 'TxSkel' receives a 'TxOpts' record with a number of options to customize how validation works.
+  --  Passing the ledger parameters is essential as it's being used when generating the UnbalancedTx,
+  --  without now internally keeps cardano api TxOut.
   validateTxSkel :: TxSkel -> m Pl.CardanoTx
 
   -- | Returns a list of spendable outputs that belong to a given address and satisfy a given predicate;
@@ -63,7 +66,7 @@ class (MonadFail m) => MonadBlockChain m where
     m [(SpendableOut, Maybe a)]
 
   -- | Returns an output given a reference to it
-  txOutByRef :: Pl.TxOutRef -> m (Maybe Pl.TxOut)
+  txOutByRef :: Pl.Params -> Pl.TxOutRef -> m (Maybe Pl.TxOut)
 
   -- | Returns the hash of our own public key. When running in the "Plutus.Contract.Contract" monad,
   --  this is a proxy to 'Pl.ownPubKey'; when running in mock mode, the return value can be
@@ -100,10 +103,10 @@ validateTxConstr = validateTxSkel . txSkel
 validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.CardanoTx
 validateTxConstrLbl lbl = validateTxSkel . txSkelLbl lbl
 
-spendableRef :: (MonadBlockChain m) => Pl.TxOutRef -> m SpendableOut
-spendableRef txORef = do
-  Just txOut <- txOutByRef txORef
-  return (txORef, fromJust (Pl.fromTxOut txOut))
+spendableRef :: (MonadBlockChain m) => Pl.Params -> Pl.TxOutRef -> m SpendableOut
+spendableRef lparams txORef = do
+  Just txOut <- txOutByRef lparams txORef
+  return (txORef, fst $ toChainIndexTxOut txOut Nothing)
 
 -- | Select public-key UTxOs that might contain some datum but no staking address.
 -- This is just a simpler variant of 'utxosSuchThat'. If you care about staking credentials
@@ -142,9 +145,9 @@ scriptUtxosSuchThat v predicate =
       (maybe (const False) predicate)
 
 -- | Returns the output associated with a given reference
-outFromOutRef :: (MonadBlockChain m) => Pl.TxOutRef -> m Pl.TxOut
-outFromOutRef outref = do
-  mo <- txOutByRef outref
+outFromOutRef :: (MonadBlockChain m) => Pl.Params -> Pl.TxOutRef -> m Pl.TxOut
+outFromOutRef lparams outref = do
+  mo <- txOutByRef lparams outref
   case mo of
     Just o -> return o
     Nothing -> fail ("No output associated with: " ++ show outref)
@@ -155,10 +158,10 @@ pkUtxos pkh = pkUtxosSuchThatValue pkh (const True)
 
 -- | Return all UTxOs belonging to a pubkey, but keep them as 'Pl.TxOut'. This is
 --  for internal use.
-pkUtxos' :: (MonadBlockChain m) => Pl.PubKeyHash -> m [(Pl.TxOutRef, Pl.TxOut)]
-pkUtxos' pkh = map (second go) <$> pkUtxos pkh
+pkUtxos' :: (MonadBlockChain m) => Pl.Params -> Pl.PubKeyHash -> m [(Pl.TxOutRef, Pl.TxOut)]
+pkUtxos' lparams pkh = map (second go) <$> pkUtxos pkh
   where
-    go (Pl.PublicKeyChainIndexTxOut a v _ _) = Pl.TxOut a v Nothing
+    go (Pl.PublicKeyChainIndexTxOut a v _ _) = mkTxOut lparams a v Nothing C.ReferenceScriptNone
     go _ = error "pkUtxos must return only Pl.PublicKeyChainIndexTxOut's"
 
 -- ** Slot and Time Management
@@ -245,7 +248,7 @@ instance (MonadTrans t, MonadBlockChain m, MonadFail (t m)) => MonadBlockChain (
   validateTxSkel = lift . validateTxSkel
   utxosSuchThat addr f = lift $ utxosSuchThat addr f
   ownPaymentPubKeyHash = lift ownPaymentPubKeyHash
-  txOutByRef = lift . txOutByRef
+  txOutByRef lparams outref = lift $ txOutByRef lparams outref
   currentSlot = lift currentSlot
   currentTime = lift currentTime
   awaitSlot = lift . awaitSlot

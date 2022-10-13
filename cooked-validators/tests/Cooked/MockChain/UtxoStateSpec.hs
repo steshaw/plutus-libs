@@ -7,13 +7,14 @@ import Cooked.MockChain.Monad.Direct
 import Cooked.MockChain.UtxoState
 import Cooked.MockChain.UtxoState.Testing
 import Cooked.MockChain.Wallet
+import Data.Default
 import qualified Ledger.Ada as Ada
 import qualified PlutusTx.Numeric as Pl
 import Test.Tasty
 import Test.Tasty.HUnit
 
 utxoStateFromID :: InitialDistribution -> UtxoState
-utxoStateFromID = mcstToUtxoState . mockChainSt0From
+utxoStateFromID = mcstToUtxoState . (mockChainSt0From def)
 
 stA0 :: UtxoState
 stA0 = utxoStateFromID $ initialDistribution' [(wallet 3, [minAda <> quickValue "TOK_A" 42])]

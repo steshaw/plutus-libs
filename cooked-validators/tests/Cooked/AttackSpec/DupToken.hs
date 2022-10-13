@@ -14,7 +14,7 @@ import Cooked.MockChain
 import Cooked.Tx.Constraints
 import Data.Default
 import qualified Ledger.Ada as L
-import qualified Ledger.Scripts as L
+import qualified Ledger.Scripts as L hiding (scriptCurrencySymbol)
 import qualified Ledger.Typed.Scripts as L
 import qualified Ledger.Value as L
 import qualified Plutus.Script.Utils.V1.Scripts as L

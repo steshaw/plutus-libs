@@ -1,6 +1,5 @@
 module Cooked.MockChain.Constraints where
 
-import Control.Arrow (second)
 import Cooked.MockChain.Monad
 import Cooked.Tx.Balance (spendValueFrom)
 import Cooked.Tx.Constraints.Type
@@ -11,12 +10,12 @@ import qualified Ledger.TimeSlot as Pl
 
 -- | Spends some value from a pubkey by selecting the needed utxos belonging
 --  to that pubkey and returning the leftover to the same pubkey.
-spentByPK :: MonadBlockChain m => Pl.PubKeyHash -> Pl.Value -> m Constraints
-spentByPK pkh val = do
+spentByPK :: MonadBlockChain m => Pl.Params -> Pl.PubKeyHash -> Pl.Value -> m Constraints
+spentByPK lparams pkh val = do
   -- TODO: maybe turn spentByPK into a pure function: spentByPK val <$> pkUtxos
-  allOuts <- pkUtxos pkh
-  let (toSpend, leftOver, _) = spendValueFrom val $ map (second Pl.toTxOut) allOuts
-  (:=>: [paysPK pkh leftOver]) . map SpendsPK <$> mapM spendableRef toSpend
+  allOuts <- pkUtxos' lparams pkh
+  let (toSpend, leftOver, _) = spendValueFrom val $ allOuts
+  (:=>: [paysPK pkh leftOver]) . map SpendsPK <$> mapM (spendableRef lparams) toSpend
 
 -- | Enforces the transaction to be vadiated at a precise slot.
 -- It requires to be in the mock chain monad, since slots can be translated to an explicit time range

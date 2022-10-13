@@ -64,7 +64,7 @@ interpret = flip evalStateT [] . interpLtlAndPruneUnfinished
 
 data MockChainBuiltin a where
   ValidateTxSkel :: TxSkel -> MockChainBuiltin Pl.CardanoTx
-  TxOutByRef :: Pl.TxOutRef -> MockChainBuiltin (Maybe Pl.TxOut)
+  TxOutByRef :: Pl.Params -> Pl.TxOutRef -> MockChainBuiltin (Maybe Pl.TxOut)
   GetCurrentSlot :: MockChainBuiltin Pl.Slot
   AwaitSlot :: Pl.Slot -> MockChainBuiltin Pl.Slot
   GetCurrentTime :: MockChainBuiltin Pl.POSIXTime
@@ -139,7 +139,7 @@ instance InterpLtl Attack MockChainBuiltin InterpMockChain where
             )
             (now mockSt skel)
   interpBuiltin (SigningWith ws act) = signingWith ws (interpLtl act)
-  interpBuiltin (TxOutByRef o) = txOutByRef o
+  interpBuiltin (TxOutByRef p o) = txOutByRef p o
   interpBuiltin GetCurrentSlot = currentSlot
   interpBuiltin (AwaitSlot s) = awaitSlot s
   interpBuiltin GetCurrentTime = currentTime
@@ -169,7 +169,7 @@ singletonBuiltin b = Instr (Builtin b) Return
 instance MonadBlockChain StagedMockChain where
   validateTxSkel = singletonBuiltin . ValidateTxSkel
   utxosSuchThat a p = singletonBuiltin (UtxosSuchThat a p)
-  txOutByRef = singletonBuiltin . TxOutByRef
+  txOutByRef p o = singletonBuiltin (TxOutByRef p o)
   ownPaymentPubKeyHash = singletonBuiltin OwnPubKey
   currentSlot = singletonBuiltin GetCurrentSlot
   currentTime = singletonBuiltin GetCurrentTime

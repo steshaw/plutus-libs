@@ -16,6 +16,7 @@ import Cooked.MockChain
 import Cooked.Tx.Balance
 import Cooked.Tx.Constraints
 import qualified Data.ByteString.Char8 as BS
+import Data.Default
 import Data.Either
 import Data.Kind
 import qualified Data.List as L
@@ -25,6 +26,7 @@ import Data.String
 import qualified Ledger.Ada as Pl
 import qualified Ledger.Crypto as Pl
 import qualified Ledger.Index as Pl
+import qualified Ledger.Tx.Internal as Tx
 import qualified Ledger.Value as Pl
 import qualified Plutus.V1.Ledger.Api as Pl
 import qualified Plutus.V1.Ledger.Crypto as Pl
@@ -62,7 +64,7 @@ tests =
       "spendValueFrom"
       [ -- In a simple case, where one has only one output, it is simply to balance it.
         testCase "spends money from the output" $
-          let txOut1 = outsOf 1 utxoIndex0
+          let txOut1 = outsOf 1 (utxoIndex0 def)
            in spendValueFrom (Pl.lovelaceValueOf 10_000) txOut1
                 @?= ([head $ map fst txOut1], Pl.lovelaceValueOf 99_990_000, mempty),
         -- It is necessary to spend both outputs of w11 to gather 8 Adas (8_000_000 lovelaces).
@@ -135,11 +137,11 @@ tests =
       ]
   ]
 
-outsOf :: Int -> Pl.UtxoIndex -> [(Pl.TxOutRef, Pl.TxOut)]
+outsOf :: Int -> Pl.UtxoIndex -> [(Pl.TxOutRef, Tx.TxOut)]
 outsOf i utxoIndex =
   M.foldlWithKey
     ( \acc k tx ->
-        case Pl.txOutPubKey tx of
+        case Tx.txOutPubKey tx of
           Nothing -> acc
           Just pk ->
             if pk == walletPKHash (wallet i)

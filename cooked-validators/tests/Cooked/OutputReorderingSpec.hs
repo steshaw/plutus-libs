@@ -47,7 +47,7 @@ skel w1 w2 =
 firstRecipientsAre :: Wallet -> Wallet -> Pl.Tx -> Bool
 firstRecipientsAre w1 w2 tx =
   case Pl.txOutputs tx of
-    (Pl.TxOut (Pl.Address (Pl.PubKeyCredential pkh1) _) _ _)
-      : (Pl.TxOut (Pl.Address (Pl.PubKeyCredential pkh2) _) _ _)
-      : _ -> walletPKHash w1 == pkh1 && walletPKHash w2 == pkh2
+    txout1 : txout2 : _ ->
+      Pl.txOutPubKey txout1 == Just (walletPKHash w1)
+        && Pl.txOutPubKey txout2 == Just (walletPKHash w2)
     _ -> False
