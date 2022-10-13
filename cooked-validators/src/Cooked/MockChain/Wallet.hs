@@ -7,9 +7,11 @@
 module Cooked.MockChain.Wallet where
 
 import qualified Cardano.Crypto.Wallet as CWCrypto
+import Control.Arrow
 import Data.Default
 import Data.Function (on)
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
 import qualified Ledger.CardanoWallet as CW
@@ -142,6 +144,11 @@ validInitialDistribution = all (all hasMinAda . snd) . M.toList . distribution
 minAda :: Pl.Value
 minAda = Pl.toValue Pl.minAdaTxOut
 
+ensureHasMinAda :: Pl.Value -> Pl.Value
+ensureHasMinAda val = val <> Pl.toValue missingAda
+  where
+    missingAda = max 0 $ Pl.minAdaTxOut - Pl.fromValue val
+
 instance Semigroup InitialDistribution where
   (InitialDistribution i) <> (InitialDistribution j) = InitialDistribution $ M.unionWith (<>) i j
 
@@ -153,8 +160,9 @@ instance Default InitialDistribution where
     where
       defLovelace = Pl.lovelaceValueOf 100_000_000
 
+-- | Ensures the distribution is valid by adding any missing Ada to all utxos.
 distributionFromList :: [(Wallet, [Pl.Value])] -> InitialDistribution
-distributionFromList = InitialDistribution . M.fromList
+distributionFromList = InitialDistribution . M.fromList . fmap (second $ fmap ensureHasMinAda)
 
 -- | Extension of the default initial distribution with additional value in
 -- some wallets.
@@ -177,3 +185,6 @@ initialTxFor lparams initDist
         Right txout -> txout
 
     initDist' = M.toList $ distribution initDist
+
+valuesForWallet :: InitialDistribution -> Wallet -> [Pl.Value]
+valuesForWallet d w = fromMaybe [] $ w `M.lookup` distribution d
