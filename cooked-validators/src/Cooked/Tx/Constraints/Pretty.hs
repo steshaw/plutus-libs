@@ -90,18 +90,17 @@ prettyScriptOutputDatum ::
   Doc ann
 prettyScriptOutputDatum _ (_, chainIndexTxOut) =
   let (ppAddr, mppVal) = prettyTxOut chainIndexTxOut
->>>>>>> 8b264fe (Remove datum from `SpendsScript` with no feature loss (#156))
    in PP.align $
         PP.vsep $
           catMaybes
             [ Just $ "Output" <+> "at" <+> ppAddr,
               mppVal,
               case chainIndexTxOut of
-                Pl.ScriptChainIndexTxOut _ _ (Right datum) _ ->
+                Pl.ScriptChainIndexTxOut _ _ (_, Just datum) _ _ ->
                   let typedDatum :: Pl.DatumType a
                       typedDatum = Pl.unsafeFromBuiltinData (Pl.getDatum datum)
                    in Just $ "Datum:" <+> prettyDatum typedDatum
-                Pl.ScriptChainIndexTxOut _ _ (Left datumHash) _ ->
+                Pl.ScriptChainIndexTxOut _ _ (datumHash, Nothing) _ _ ->
                   Just $ "Datum hash:" <+> prettyHash datumHash
                 _ -> error "Not a script output"
             ]

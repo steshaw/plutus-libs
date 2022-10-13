@@ -60,7 +60,7 @@ class ToLedgerConstraint constraint where
   toLedgerConstraint :: constraint -> LedgerConstraint a
 
 instance ToLedgerConstraint MiscConstraint where
-  extractDatumStr (SpendsScript _ _ (_, Pl.ScriptChainIndexTxOut _ _ (Right datum) _)) =
+  extractDatumStr (SpendsScript _ _ (_, Pl.ScriptChainIndexTxOut _ _ (_, Just datum) _ _)) =
     M.singleton (Pl.datumHash . Pl.Datum $ Pl.toBuiltinData datum) (show datum)
   extractDatumStr _ = M.empty
 

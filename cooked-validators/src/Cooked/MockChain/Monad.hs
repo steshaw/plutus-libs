@@ -26,7 +26,6 @@ import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromJust)
 import qualified Ledger as Pl
 import qualified Ledger.Credential as Pl
-import qualified Ledger.Scripts as Pl
 import qualified Ledger.TimeSlot as Pl
 import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator, validatorAddress)
 import qualified PlutusTx as Pl (FromData)
@@ -129,13 +128,13 @@ spOutResolveDatum ::
   MonadBlockChain m =>
   SpendableOut ->
   m SpendableOut
-spOutResolveDatum (txOutRef, chainIndexTxOut@(Pl.ScriptChainIndexTxOut _ _ (Left _) _)) = do
+spOutResolveDatum (txOutRef, chainIndexTxOut@(Pl.ScriptChainIndexTxOut addr v (dh, Nothing) refScript vld)) = do
   mDatum <- datumFromTxOut chainIndexTxOut
   case mDatum of
     Nothing -> fail "datum hash not found in block chain state"
     Just datum ->
       return
-        (txOutRef, chainIndexTxOut {Pl._ciTxOutDatum = Right datum})
+        (txOutRef, (Pl.ScriptChainIndexTxOut addr v (dh, Just datum) refScript vld))
 spOutResolveDatum spOut = return spOut
 
 -- | Retrieve the ordered list of "SpendableOutput" corresponding to each
@@ -148,10 +147,7 @@ spOutResolveDatum spOut = return spOut
 -- afterwards using "utxosSuchThat" functions.
 spOutsFromCardanoTx :: MonadBlockChain m => Pl.CardanoTx -> m [SpendableOut]
 spOutsFromCardanoTx cardanoTx = forM (Pl.getCardanoTxOutRefs cardanoTx) $
-  \(txOut, txOutRef) ->
-    case Pl.fromTxOut txOut of
-      Just chainIndexTxOut -> spOutResolveDatum (txOutRef, chainIndexTxOut)
-      Nothing -> fail "could not extract ChainIndexTxOut"
+  \(txOut, txOutRef) -> spOutResolveDatum (txOutRef, fst $ toChainIndexTxOut txOut Nothing)
 
 -- | Select public-key UTxOs that might contain some datum but no staking address.
 -- This is just a simpler variant of 'utxosSuchThat'. If you care about staking credentials

@@ -24,7 +24,6 @@ import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints
 import qualified Data.List.NonEmpty as NE
 import qualified Ledger as Pl
-import qualified Ledger.Scripts as Pl
 import qualified PlutusTx as Pl (FromData)
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
