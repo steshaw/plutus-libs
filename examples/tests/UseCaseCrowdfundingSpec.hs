@@ -79,6 +79,7 @@ paysCampaign c w val =
   void $
     signs w $
       validateTxConstrOpts
+        def
         (def {autoSlotIncrease = False})
         [PaysScript (typedValidator c) (Ledger.PaymentPubKeyHash (walletPKHash w)) val]
 
@@ -89,8 +90,9 @@ retrieveFunds t c owner = do
   void $
     signs owner $
       validateTxConstrOpts
+        def
         (def {autoSlotIncrease = False})
-        ( (ValidateIn (collectionRange c) : map (SpendsScript (typedValidator c) Collect) (fst <$> funds))
+        ( (ValidateIn (collectionRange c) : (SignedBy [walletPKHash owner]) : map (SpendsScript (typedValidator c) Collect) (fst <$> funds))
             :=>: [paysPK (walletPKHash owner) (mconcat $ map (sOutValue . fst) funds)]
         )
 

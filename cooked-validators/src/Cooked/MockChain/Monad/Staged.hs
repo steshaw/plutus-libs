@@ -63,7 +63,7 @@ interpret = flip evalStateT [] . interpLtlAndPruneUnfinished
 -- * 'StagedMockChain': An AST for 'MonadMockChain' computations
 
 data MockChainBuiltin a where
-  ValidateTxSkel :: TxSkel -> MockChainBuiltin Pl.CardanoTx
+  ValidateTxSkel :: Pl.Params -> TxSkel -> MockChainBuiltin Pl.CardanoTx
   TxOutByRef :: Pl.Params -> Pl.TxOutRef -> MockChainBuiltin (Maybe Pl.TxOut)
   GetCurrentSlot :: MockChainBuiltin Pl.Slot
   AwaitSlot :: Pl.Slot -> MockChainBuiltin Pl.Slot
@@ -120,7 +120,7 @@ instance MonadPlus m => MonadPlus (MockChainT m) where
   mplus = combineMockChainT mplus
 
 instance InterpLtl Attack MockChainBuiltin InterpMockChain where
-  interpBuiltin (ValidateTxSkel skel) =
+  interpBuiltin (ValidateTxSkel p skel) =
     get
       >>= msum
         . map (uncurry interpretAndTell)
@@ -133,8 +133,8 @@ instance InterpLtl Attack MockChainBuiltin InterpMockChain where
           map
             ( \skel' -> do
                 signers <- askSigners
-                lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ ValidateTxSkel skel'
-                tx <- validateTxSkel skel'
+                lift $ lift $ tell $ prettyMockChainOp signers $ Builtin $ ValidateTxSkel p skel'
+                tx <- validateTxSkel p skel'
                 put later
                 return tx
             )
@@ -169,7 +169,7 @@ singletonBuiltin :: builtin a -> Staged (LtlOp modification builtin) a
 singletonBuiltin b = Instr (Builtin b) Return
 
 instance MonadBlockChain StagedMockChain where
-  validateTxSkel = singletonBuiltin . ValidateTxSkel
+  validateTxSkel p skel = singletonBuiltin (ValidateTxSkel p skel)
   utxosSuchThat a p = singletonBuiltin (UtxosSuchThat a p)
   datumFromTxOut = singletonBuiltin . DatumFromTxOut
   txOutByRef p o = singletonBuiltin (TxOutByRef p o)
@@ -190,7 +190,7 @@ instance MonadMockChain StagedMockChain where
 -- | Generates a 'TraceDescr'iption for the given operation; we're mostly interested in seeing
 --  the transactions that were validated, so many operations have no description.
 prettyMockChainOp :: NE.NonEmpty Wallet -> MockChainOp a -> TraceDescr
-prettyMockChainOp signers (Builtin (ValidateTxSkel skel)) =
+prettyMockChainOp signers (Builtin (ValidateTxSkel _ skel)) =
   trSingleton $
     PP.hang 2 $
       PP.vsep ["ValidateTxSkel", prettyTxSkel (NE.toList signers) skel]

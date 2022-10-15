@@ -54,7 +54,7 @@ carelessPolicy =
     $$(Pl.compile [||L.mkUntypedMintingPolicy mkCarelessPolicy||])
 
 dupTokenTrace :: MonadBlockChain m => L.MintingPolicy -> L.TokenName -> Integer -> Wallet -> m ()
-dupTokenTrace pol tName amount recipient = void $ validateTxSkel skel
+dupTokenTrace pol tName amount recipient = void $ validateTxSkel def skel
   where
     skel =
       txSkelOpts (def {adjustUnbalTx = True}) $

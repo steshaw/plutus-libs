@@ -59,7 +59,7 @@ mkParams =
     mkThreadToken :: MonadBlockChain m => m Pl.TxOutRef
     mkThreadToken = do
       pkh <- ownPaymentPubKeyHash
-      void $ validateTxSkel $ mkThreadTokenInputSkel pkh
+      void $ validateTxSkel def $ mkThreadTokenInputSkel pkh
       emptyUtxos <- pkUtxos pkh
       case emptyUtxos of
         [] -> error "No empty UTxOs"
@@ -86,6 +86,7 @@ mkProposal reqSigs pmt = do
       let threadToken = paramsToken params
       _ <-
         validateTxConstrLbl
+          def
           (ProposalSkel reqSigs pmt)
           ( [mints [threadTokenPolicy (fst spendableOut) threadTokenName] threadToken]
               :=>: [
@@ -113,6 +114,7 @@ mkSign params pmt sk = do
   pkh <- ownPaymentPubKeyHash
   void $
     validateTxConstrOpts
+      def
       (def {adjustUnbalTx = True})
       [PaysScript (pmultisig params) (Sign pkh sig) mkSignLockedCost]
   where
@@ -131,7 +133,7 @@ mkCollect thePayment params = signs (wallet 1) $ do
   signatures <- nubBy ((==) `on` snd) <$> scriptUtxosSuchThat (pmultisig params) isSign
   let signatureValues = mconcat $ map (sOutValue . fst) signatures
   void $
-    validateTxConstr $
+    validateTxConstr def $
       ( SpendsScript (pmultisig params) () initialProp :
         (SpendsScript (pmultisig params) () <$> (fst <$> signatures))
       )
@@ -145,7 +147,7 @@ mkPay :: MonadMockChain m => Payment -> Params -> Pl.TxOutRef -> m ()
 mkPay thePayment params tokenOutRef = signs (wallet 1) $ do
   [(accumulated, _)] <- scriptUtxosSuchThat (pmultisig params) isAccumulator
   void $
-    validateTxConstr $
+    validateTxConstr def $
       -- We payout all the gathered funds to the receiver of the payment, including the minimum ada
       -- locked in all the sign UTxOs, which was accumulated in the Accumulate datum.
       [ SpendsScript (pmultisig params) () accumulated,
@@ -346,7 +348,7 @@ mkFakeCollect thePayment params = do
   signatures <- nubBy ((==) `on` snd) <$> scriptUtxosSuchThat (pmultisig params) isSign
   let signatureValues = mconcat $ map (sOutValue . fst) signatures
   void $
-    validateTxConstr $
+    validateTxConstr def $
       ( SpendsScript (pmultisig params) () initialProp :
         (SpendsScript (pmultisig params) () <$> (fst <$> signatures))
       )

@@ -54,9 +54,9 @@ tests =
                 case toConstraints cs of
                   is :=>: os -> TxSkel lbl opts (is :=>: (paysPK (walletPKHash $ wallet 5) (Pl.lovelaceValueOf 10_000_000) : os))
               tr f g h = void $ do
-                validateTxSkel $ f $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
-                validateTxSkel (g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4_200_000)]) `as` wallet 2
-                validateTxSkel $ h $ txSkel [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4_200_000)]
+                validateTxSkel def $ f $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
+                validateTxSkel def (g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4_200_000)]) `as` wallet 2
+                validateTxSkel def $ h $ txSkel [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4_200_000)]
            in somewhere (\_ sk -> [f sk]) (tr id id id) `smcEq` (tr f id id <|> tr id f id <|> tr id id f),
         testCase "somewhere (\\case b -> [b']; _ -> []) (a >> b >> c) == [a >> b' >> c]" $
           let paysWallet3 [] = False
@@ -69,15 +69,16 @@ tests =
                       then [TxSkel lbl opts (is :=>: (paysPK (walletPKHash $ wallet 5) (Pl.lovelaceValueOf 10_000_000) : os))]
                       else []
               tr f g h = void $ do
-                validateTxSkel $ f $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
-                validateTxSkel $ g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4_200_000)]
-                validateTxSkel $ h $ txSkel [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4_200_000)]
+                validateTxSkel def $ f $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
+                validateTxSkel def $ g $ txSkel [paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 4_200_000)]
+                validateTxSkel def $ h $ txSkel [paysPK (walletPKHash $ wallet 4) (Pl.lovelaceValueOf 4_200_000)]
            in somewhere (\_ sk -> f sk) (tr id id id) `smcEq` tr id (head . f) id,
         testCase "somewhere (g <> f) returns correct set of traces" $
           let tr =
                 foldr
                   ( \wallets rest ->
                       validateTxSkel
+                        def
                         ( txSkel
                             ( map
                                 (\wal -> paysPK (walletPKHash wal) (Pl.lovelaceValueOf 4_200_000))
@@ -157,10 +158,11 @@ tests =
                     [ TxSkel lbl opts (is :=>: (paysPK (walletPKHash $ wallet 6) (Pl.lovelaceValueOf 10_000_000) : os)),
                       TxSkel lbl opts (is :=>: (paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 10_000_000) : os))
                     ]
-              tr = validateTxSkel $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
+              tr = validateTxSkel def $ txSkel [paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf 4_200_000)]
            in (somewhere (g <> f) tr `smcEq` empty)
                 .&&. ( somewhere (f <> g) tr
                          `smcEq` validateTxSkel
+                           def
                            ( txSkel
                                [ paysPK (walletPKHash $ wallet 5) (Pl.lovelaceValueOf 6_000_000),
                                  paysPK (walletPKHash $ wallet 3) (Pl.lovelaceValueOf 10_000_000),

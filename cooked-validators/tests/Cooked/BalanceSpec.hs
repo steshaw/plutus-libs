@@ -121,18 +121,18 @@ tests =
         -- It would leave it with a 0.4 ada UTxO which is less than min ada.
         testCase "Fails for unbalanceable transactions" $
           let tr =
-                validateTxConstr [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
-                  >> validateTxConstr [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
-                  >> signs (wallet 11) (validateTxConstr [paysPK (walletPKHash $ wallet 1) (Pl.lovelaceValueOf 8_000_000)])
+                validateTxConstr def [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
+                  >> validateTxConstr def [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
+                  >> signs (wallet 11) (validateTxConstr def [paysPK (walletPKHash $ wallet 1) (Pl.lovelaceValueOf 8_000_000)])
            in runMockChain tr `shouldSatisfy` isLeft,
         -- Unlike the test above, we now want to see this being possible, but the transaction will need
         -- to consume the additional utxo of wallet 11.
         testCase "Uses additional utxos on demand" $
           let tr =
-                validateTxConstr [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
-                  >> validateTxConstr [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
-                  >> validateTxConstr [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 3_700_000)]
-                  >> signs (wallet 11) (validateTxConstr [paysPK (walletPKHash $ wallet 1) (Pl.lovelaceValueOf 8_000_000)])
+                validateTxConstr def [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
+                  >> validateTxConstr def [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
+                  >> validateTxConstr def [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 3_700_000)]
+                  >> signs (wallet 11) (validateTxConstr def [paysPK (walletPKHash $ wallet 1) (Pl.lovelaceValueOf 8_000_000)])
            in runMockChain tr `shouldSatisfy` isRight
       ]
   ]
@@ -155,8 +155,10 @@ tracePayWallet11 :: Either MockChainError (MockChainSt, UtxoState)
 tracePayWallet11 =
   runMockChain $ do
     validateTxConstr
+      def
       [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
     validateTxConstr
+      def
       [paysPK (walletPKHash $ wallet 11) (Pl.lovelaceValueOf 4_200_000)]
     MockChainT get
 

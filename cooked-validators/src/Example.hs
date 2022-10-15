@@ -11,6 +11,7 @@ module Example where
 import Control.Monad
 import Cooked.MockChain
 import Cooked.Tx.Constraints
+import Data.Default (def)
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
 import qualified Ledger.Typed.Scripts as Pl
@@ -66,7 +67,7 @@ aValidator =
 payEndpoint :: MonadBlockChain m => Integer -> Integer -> m SpendableOut
 payEndpoint amountToPk amountToScript = do
   cardanoTx <-
-    validateTxSkel $
+    validateTxSkel def $
       txSkel
         [ paysPK (walletPKHash $ wallet 2) (Pl.lovelaceValueOf amountToPk),
           PaysScript aValidator ADatum (Pl.lovelaceValueOf amountToScript)
@@ -79,7 +80,7 @@ payEndpoint amountToPk amountToScript = do
 spendEndpoint :: MonadBlockChain m => SpendableOut -> ARedeemer -> m ()
 spendEndpoint spOut redeemer =
   void $
-    validateTxSkel $
+    validateTxSkel def $
       txSkel
         [SpendsScript aValidator redeemer spOut]
 

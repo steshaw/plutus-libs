@@ -74,6 +74,7 @@ prettyMiscConstraint (SpendsScript val red spOut) =
     ("SpendsScript" <+> prettyTypedValidator val)
     "-"
     ["Redeemer:" <+> PP.viaShow red, prettyScriptOutputDatum val spOut]
+prettyMiscConstraint (ValidateIn r) = prettyEnum "ValidateIn" "-" $ [PP.pretty (show r)]
 prettyMiscConstraint _ = "<constraint without pretty def>"
 
 prettyHash :: (Show a) => a -> Doc ann

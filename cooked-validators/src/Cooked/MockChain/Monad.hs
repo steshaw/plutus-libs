@@ -54,7 +54,7 @@ class (MonadFail m) => MonadBlockChain m where
   --  The 'TxSkel' receives a 'TxOpts' record with a number of options to customize how validation works.
   --  Passing the ledger parameters is essential as it's being used when generating the UnbalancedTx,
   --  without now internally keeps cardano api TxOut.
-  validateTxSkel :: TxSkel -> m Pl.CardanoTx
+  validateTxSkel :: Pl.Params -> TxSkel -> m Pl.CardanoTx
 
   -- | Returns a list of spendable outputs that belong to a given address and satisfy a given predicate;
   --  Additionally, return the datum present in there if it happened to be a script output. It is important
@@ -95,16 +95,16 @@ class (MonadFail m) => MonadBlockChain m where
   awaitTime :: Pl.POSIXTime -> m Pl.POSIXTime
 
 -- | Calls 'validateTxSkel' with a skeleton that is set with some specific options.
-validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => TxOpts -> constraints -> m Pl.CardanoTx
-validateTxConstrOpts opts = validateTxSkel . txSkelOpts opts
+validateTxConstrOpts :: (MonadBlockChain m, ConstraintsSpec constraints) => Pl.Params -> TxOpts -> constraints -> m Pl.CardanoTx
+validateTxConstrOpts cfg opts cstr = validateTxSkel cfg $ txSkelOpts opts cstr
 
 -- | Calls 'validateTx' with the default set of options and no label.
-validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => constraints -> m Pl.CardanoTx
-validateTxConstr = validateTxSkel . txSkel
+validateTxConstr :: (MonadBlockChain m, ConstraintsSpec constraints) => Pl.Params -> constraints -> m Pl.CardanoTx
+validateTxConstr cfg cstr = validateTxSkel cfg $ txSkel cstr
 
 -- | Calls 'validateTxSkel' with the default set of options but passes an arbitrary showable label to it.
-validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => lbl -> constraints -> m Pl.CardanoTx
-validateTxConstrLbl lbl = validateTxSkel . txSkelLbl lbl
+validateTxConstrLbl :: (LabelConstrs lbl, MonadBlockChain m, ConstraintsSpec constraints) => Pl.Params -> lbl -> constraints -> m Pl.CardanoTx
+validateTxConstrLbl cfg lbl cstr = validateTxSkel cfg $ txSkelLbl lbl cstr
 
 spendableRef :: (MonadBlockChain m) => Pl.Params -> Pl.TxOutRef -> m SpendableOut
 spendableRef lparams txORef = do
@@ -286,7 +286,7 @@ newtype AsTrans t (m :: Type -> Type) a = AsTrans {getTrans :: t m a}
   deriving newtype (Functor, Applicative, Monad, MonadFail, MonadTrans)
 
 instance (MonadTrans t, MonadBlockChain m, MonadFail (t m)) => MonadBlockChain (AsTrans t m) where
-  validateTxSkel = lift . validateTxSkel
+  validateTxSkel lparams skel = lift $ validateTxSkel lparams skel
   utxosSuchThat addr f = lift $ utxosSuchThat addr f
   datumFromTxOut = lift . datumFromTxOut
   ownPaymentPubKeyHash = lift ownPaymentPubKeyHash

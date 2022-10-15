@@ -16,9 +16,10 @@ package cardano-crypto-praos
 source-repository-package
   type: git
   location: https://github.com/etiennejf/plutus-apps.git
-  tag: c9f154f77da5d601918ad75632c06046d01d2894
+  tag: 3eeb9884b567846261947d970784de2a70654e42
   subdir:
     freer-extras
+    pab-blockfrost
     playground-common
     plutus-contract
     plutus-chain-index
@@ -28,7 +29,6 @@ source-repository-package
     plutus-ledger-constraints
     plutus-pab
     plutus-script-utils
-    plutus-streaming
     plutus-use-cases
     rewindable-index
 
@@ -329,12 +329,6 @@ source-repository-package
   type: git
   location: https://github.com/input-output-hk/Win32-network
   tag: 3825d3abf75f83f406c1f7161883c438dac7277d
-
--- Temporary indexing
-source-repository-package
-  type: git
-  location: https://github.com/raduom/hysterical-screams
-  tag: 4c523469e9efd3f0d10d17da3304923b7b0e0674
 
 source-repository-package
   type: git

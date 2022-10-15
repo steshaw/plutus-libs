@@ -30,6 +30,7 @@ paymentAfterCustomInitialization :: Either MockChainError ((), UtxoState)
 paymentAfterCustomInitialization =
   runMockChainFrom customInitialDistribution $ do
     validateTxConstrOpts
+      def
       -- we have to adjust the tx in order for it not to fail with ValueLessThanMinAda
       (def {adjustUnbalTx = True})
       [paysPK (walletPKHash $ wallet 2) (quickValue "goldenCoins" 12)]

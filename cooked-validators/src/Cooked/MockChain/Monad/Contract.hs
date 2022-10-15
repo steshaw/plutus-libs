@@ -22,9 +22,9 @@ instance (C.AsContractError e) => MonadFail (C.Contract w s e) where
   fail = C.throwError . review C._OtherContractError . T.pack
 
 instance (C.AsContractError e) => MonadBlockChain (C.Contract w s e) where
-  validateTxSkel TxSkel {txConstraints, txOpts} = do
+  validateTxSkel lparams (TxSkel {txConstraints, txOpts}) = do
     let (lkups, constrs) = toLedgerConstraint @Constraints @Void (toConstraints txConstraints)
-    tx <- C.submitTxConstraintsWith lkups constrs
+    tx <- C.submitTxConstraintsWith lparams lkups constrs
     when (awaitTxConfirmed txOpts) $ C.awaitTxConfirmed $ Pl.getCardanoTxId tx
     return tx
 

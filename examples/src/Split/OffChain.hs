@@ -12,6 +12,7 @@ module Split.OffChain where
 import Control.Monad
 import Cooked.MockChain
 import Cooked.Tx.Constraints
+import Data.Default (def)
 import qualified Ledger as Pl
 import qualified Ledger.Ada as Pl
 import qualified Ledger.Typed.Scripts as Pl
@@ -30,6 +31,7 @@ txLock :: MonadBlockChain m => Pl.TypedValidator Split -> SplitDatum -> m ()
 txLock script datum =
   void $
     validateTxConstrLbl
+      def
       (TxLock datum)
       [ PaysScript
           script
@@ -56,6 +58,7 @@ txUnlock script = do
   let share2 = amount - half
   void $
     validateTxConstrLbl
+      def
       TxUnlock
       ( [SpendsScript script () output]
           :=>: [ paysPK r1 (Pl.lovelaceValueOf share1),

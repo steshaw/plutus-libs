@@ -241,31 +241,30 @@ validatePayment Params {..} (Accumulator payment signees) _ ctx
           mapMaybe (findDatum txInfo) $
             filter (/= fromJust (Validation.findOwnInput ctx)) $ txInfoInputs txInfo
 
-        extractNewSignees [] acc = acc
-        extractNewSignees ((Accumulator {}) : tl) acc = extractNewSignees tl acc
-        extractNewSignees ((Sign sigPkh s) : tl) acc =
-          case AssocMap.lookup sigPkh pmspSignatories of
-            Just pk
-              | (not $ sigPkh `elem` signees) && (verifySig pk (sha2_256 $ packPayment payment) s) ->
-                extractNewSignees tl (sigPkh : acc)
-            _ -> extractNewSignees tl acc
+        -- extractNewSignees [] acc = acc
+        -- extractNewSignees ((Accumulator {}) : tl) acc = extractNewSignees tl acc
+        -- extractNewSignees ((Sign sigPkh s) : tl) acc =
+        --   case AssocMap.lookup sigPkh pmspSignatories of
+        --     Just pk
+        --       | (not $ sigPkh `elem` signees) && (verifySig pk (sha2_256 $ packPayment payment) s) ->
+        --         extractNewSignees tl (sigPkh : acc)
+        --     _ -> extractNewSignees tl acc
 
-        newSignees = extractNewSignees otherInputs []
+        -- newSignees = extractNewSignees otherInputs []
 
+        newSignees = mapMaybe extractSig otherInputs
         allInputsRelevant = length newSignees == length otherInputs
 
--- Buggy with new version of plutus
--- newSignees = mapMaybe extractSig otherInputs
--- extractSig Accumulator {} = Nothing
--- extractSig (Sign signPkh s)
---   | signPkh `elem` signees = Nothing -- Already signed this payment -- wrong
---   | otherwise =
---     case AssocMap.lookup signPkh pmspSignatories of
---       Nothing -> Nothing -- Not a signatory -- wrong
---       Just pk ->
---         if verifySig pk (sha2_256 $ packPayment payment) s
---           then Just signPkh
---           else Nothing -- Sig verification failed -- wrong
+        extractSig Accumulator {} = Nothing
+        extractSig (Sign signPkh s)
+          | signPkh `elem` signees = Nothing -- Already signed this payment -- wrong
+          | otherwise =
+            case AssocMap.lookup signPkh pmspSignatories of
+              Nothing -> Nothing -- Not a signatory -- wrong
+              Just pk ->
+                if verifySig pk (sha2_256 $ packPayment payment) s
+                  then Just signPkh
+                  else Nothing -- Sig verification failed -- wrong
 
 -- Here's a wrapper to verify a signature. It is important that the parameters to verifySignature
 -- are, in order: pk, msg then signature.

@@ -72,14 +72,14 @@ bananaParams t =
 noBids :: MonadMockChain m => m ()
 noBids = do
   t0 <- currentTime
-  (p, q) <- A.txOpen (bananaParams t0) `as` wallet 1
+  (p, q) <- A.txOpen (bananaParams (t0 + 1)) `as` wallet 1
   awaitTime (A.bidDeadline p + 1)
   A.txHammer p q
 
 oneBid :: MonadMockChain m => m ()
 oneBid = do
   t0 <- currentTime
-  (p, q) <- A.txOpen (bananaParams t0) `as` wallet 1
+  (p, q) <- A.txOpen (bananaParams (t0 + 1)) `as` wallet 1
   A.txBid p 3 `as` wallet 2
   awaitTime (A.bidDeadline p + 1)
   A.txHammer p q
@@ -87,7 +87,7 @@ oneBid = do
 twoBids :: MonadMockChain m => m ()
 twoBids = do
   t0 <- currentTime
-  (p, q) <- A.txOpen (bananaParams t0) `as` wallet 1
+  (p, q) <- A.txOpen (bananaParams (t0 + 1)) `as` wallet 1
   A.txBid p 3 `as` wallet 2
   A.txBid p 4 `as` wallet 3
   awaitTime (A.bidDeadline p + 1)
@@ -253,7 +253,7 @@ attacks =
 bidderAlternativeTrace :: (Alternative m, MonadMockChain m) => m ()
 bidderAlternativeTrace = do
   t0 <- currentTime
-  (p, q) <- A.txOpen (bananaParams t0) `as` wallet 1
+  (p, q) <- A.txOpen (bananaParams (t0 + 1)) `as` wallet 1
   A.txBid p 9 `as` wallet 2 <|> A.txBid p 9 `as` wallet 3
   awaitTime (A.bidDeadline p)
   A.txHammer p q

@@ -5,6 +5,7 @@ module SplitSpec where
 import Control.Monad
 import Cooked.MockChain
 import Cooked.Tx.Constraints
+import Data.Default (def)
 import Data.Either (isLeft, isRight)
 import Data.Maybe (fromMaybe)
 import qualified Ledger.Ada as Pl
@@ -48,6 +49,7 @@ txUnlock' mRecipient1 mRecipient2 mAmountChanger issuer = do
           (Pl.lovelaceValueOf remainder)
   void $
     validateTxConstrLbl
+      def
       (TxUnlock' mRecipient1 mRecipient2 (fmap ($ 100) mAmountChanger))
       (constraints <> toConstraints [remainderConstraint | remainder > 0])
       `as` issuer
@@ -76,7 +78,7 @@ txUnlockAttack issuer = do
                  paysPK r12 (if amount1 > amount2 then half1 else half2),
                  paysPK r21 half2
                ]
-  void $ validateTxConstrLbl TxUnlockAttack constraints `as` issuer
+  void $ validateTxConstrLbl def TxUnlockAttack constraints `as` issuer
 
 data TxUnlockAttack = TxUnlockAttack deriving (Show, Eq)
 

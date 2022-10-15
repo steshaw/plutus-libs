@@ -229,7 +229,7 @@ utxoIndex0 lparams = utxoIndex0From lparams def
 -- ** Direct Interpretation of Operations
 
 instance (Monad m) => MonadBlockChain (MockChainT m) where
-  validateTxSkel skel = do
+  validateTxSkel _ skel = do
     (reqSigs, tx) <- generateTx' skel
     _ <- validateTx' reqSigs tx
     when (autoSlotIncrease $ txOpts skel) $ modify' (\st -> st {mcstCurrentSlot = mcstCurrentSlot st + 1})
@@ -289,31 +289,17 @@ runTransactionValidation ::
   Pl.UtxoIndex ->
   [Wallet] ->
   Pl.CardanoTx ->
-  (Pl.UtxoIndex, Maybe Pl.ValidationErrorInPhase, [Pl.ScriptValidationEvent])
-runTransactionValidation s lparams ix signers ctx =
-  let vtx = Pl.ValidationCtx ix lparams
+  (Pl.UtxoIndex, Maybe Pl.ValidationErrorInPhase)
+runTransactionValidation s lparams ix signers tx =
+  let tx' = L.foldl' (flip txAddSignatureAPI) tx signers
       cIndex = either (error . show) id $ Pl.fromPlutusIndex ix
-      (e, evs) =
-        ctx
-          & Pl.mergeCardanoTxWith
-            (\tx -> Pl.runValidation (Pl.validateTransaction s tx) vtx)
-            ( \(Pl.CardanoApiEmulatorEraTx tx) ->
-                ( Pl.hasValidationErrors
-                    lparams
-                    (fromIntegral s)
-                    cIndex
-                    (L.foldl' (flip txAddSignatureAPI) tx signers),
-                  []
-                )
-            )
-            (\(e1, sve1) (e2, sve2) -> (e1 <|> e2, sve2 ++ sve1))
-
+      e = Pl.validateCardanoTx lparams s cIndex tx'
       -- Now we compute the new index
-      idx' = case e of
+      ix' = case e of
         Just (Pl.Phase1, _) -> ix
-        Just (Pl.Phase2, _) -> Pl.insertCollateral ctx ix
-        Nothing -> Pl.insert ctx ix
-   in (idx', e, evs)
+        Just (Pl.Phase2, _) -> Pl.insertCollateral tx ix
+        Nothing -> Pl.insert tx ix
+   in (ix', e)
 
 -- | Check 'validateTx' for details; we pass the list of required signatories since
 -- that is only truly available from the unbalanced tx, so we bubble that up all the way here.
@@ -325,9 +311,8 @@ validateTx' reqSigs tx = do
   signers <- askSigners
   let cIndex = either (error . show) id $ Pl.fromPlutusIndex ix
       cardanoTx = either (error . show) id $ Pl.fromPlutusTx ps cIndex reqSigs tx
-      ctx = Pl.Both tx (Pl.CardanoApiEmulatorEraTx cardanoTx)
-      (ix', status, _evs) = runTransactionValidation s ps ix (NE.toList signers) ctx
-  -- case trace (show $ snd res) $ fst res of
+      ctx = Pl.CardanoApiTx (Pl.CardanoApiEmulatorEraTx cardanoTx)
+      (ix', status) = runTransactionValidation s ps ix (NE.toList signers) ctx
   case status of
     Just err -> throwError (MCEValidationError err)
     Nothing -> do
@@ -388,10 +373,10 @@ utxosSuchThat' addr datumPred = do
 --
 --  See "Cooked.Tx.Balance" for balancing capabilities or stick to
 --  'generateTx', which generates /and/ balances a transaction.
-generateUnbalTx :: TxSkel -> Either MockChainError Pl.UnbalancedTx
-generateUnbalTx TxSkel {txConstraints} =
+generateUnbalTx :: Pl.Params -> TxSkel -> Either MockChainError Pl.UnbalancedTx
+generateUnbalTx cfg (TxSkel {txConstraints}) =
   let (lkups, constrs) = toLedgerConstraint @Constraints @Void (toConstraints txConstraints)
-   in first MCETxError $ Pl.mkTx lkups constrs
+   in first MCETxError $ Pl.mkTx cfg lkups constrs
 
 myAdjustUnbalTx :: Pl.Params -> Pl.UnbalancedTx -> Pl.UnbalancedTx
 myAdjustUnbalTx lparams utx =
@@ -404,20 +389,20 @@ generateTx' :: (Monad m) => TxSkel -> MockChainT m ([Pl.PaymentPubKeyHash], Pl.T
 generateTx' skel@(TxSkel _ _ constraintsSpec) = do
   modify $ updateDatumStr skel
   signers <- askSigners
-  lparams <- params
-  case generateUnbalTx skel of
+  cfg <- params
+  case generateUnbalTx cfg skel of
     Left err -> throwError err
     Right ubtx -> do
-      let adjust = if adjustUnbalTx opts then myAdjustUnbalTx lparams else id
+      let adjust = if adjustUnbalTx opts then myAdjustUnbalTx cfg else id
       let (_ :=>: outputConstraints) = toConstraints constraintsSpec
       let reorderedUbtx =
             if forceOutputOrdering opts
-              then applyTxOutConstraintOrder lparams outputConstraints ubtx
+              then applyTxOutConstraintOrder cfg outputConstraints ubtx
               else ubtx
       -- optionally apply a transformation before balancing
       let modifiedUbtx = applyRawModOnUnbalancedTx (unsafeModTx opts) reorderedUbtx
       (reqSigs, balancedTx) <-
-        balanceTxFrom lparams (balanceOutputPolicy opts) (not $ balance opts) (collateral opts) (NE.head signers) (adjust modifiedUbtx)
+        balanceTxFrom cfg (balanceOutputPolicy opts) (not $ balance opts) (collateral opts) (NE.head signers) (adjust modifiedUbtx)
       return . (reqSigs,) $
         foldl
           (flip txAddSignature)
@@ -448,27 +433,26 @@ generateTx' skel@(TxSkel _ _ constraintsSpec) = do
 setFeeAndValidRange :: (Monad m) => BalanceOutputPolicy -> Wallet -> Pl.UnbalancedTx -> MockChainT m Pl.Tx
 setFeeAndValidRange _bPol _w (Pl.UnbalancedCardanoTx _tx0 _reqSigs0 _uindex) =
   error "Impossible: we have a CardanoBuildTx"
-setFeeAndValidRange bPol w (Pl.UnbalancedEmulatorTx tx0 reqSigs0 uindex slotRange) = do
+setFeeAndValidRange bPol w (Pl.UnbalancedEmulatorTx tx0 reqSigs0 uindex) = do
+  -- slot range is now already set properly in tx when generating unbalanced tx
   ps <- asks mceParams
   utxos <- pkUtxos' ps (walletPKHash w)
   let requiredSigners = S.toList reqSigs0
   case Pl.fromPlutusIndex $ Pl.UtxoIndex $ uindex <> M.fromList utxos of
     Left err -> throwError $ FailWith $ "setFeeAndValidRange: " ++ show err
     Right cUtxoIndex -> do
-      config <- slotConfig
       -- We start with a high startingFee, but theres a chance that 'w' doesn't have enough funds
       -- so we'll see an unbalanceable error; in that case, we switch to the minimum fee and try again.
       -- That feels very much like a hack, and it is. Maybe we should witch to starting with a small
       -- fee and then increasing, but that might require more iterations until its settled.
       -- For now, let's keep it just like the folks from plutus-apps did it.
       let startingFee = Ada.lovelaceValueOf 3000000
-      let tx = tx0 {Pl.txValidRange = Pl.posixTimeRangeToContainedSlotRange config slotRange}
       fee <-
-        calcFee 5 startingFee requiredSigners cUtxoIndex ps tx
+        calcFee 5 startingFee requiredSigners cUtxoIndex ps tx0
           `catchError` \case
-            MCEUnbalanceable BalCalcFee _ _ -> calcFee 5 (Pl.minFee tx0) requiredSigners cUtxoIndex ps tx
+            MCEUnbalanceable BalCalcFee _ _ -> calcFee 5 (Pl.minFee tx0) requiredSigners cUtxoIndex ps tx0
             e -> throwError e
-      return $ tx {Pl.txFee = fee}
+      return $ tx0 {Pl.txFee = fee}
   where
     -- Inspired by https://github.com/input-output-hk/plutus-apps/blob/03ba6b7e8b9371adf352ffd53df8170633b6dffa/plutus-contract/src/Wallet/Emulator/Wallet.hs#L314
     calcFee ::

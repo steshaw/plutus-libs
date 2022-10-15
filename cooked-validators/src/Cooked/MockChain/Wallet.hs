@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -5,7 +6,6 @@
 
 module Cooked.MockChain.Wallet where
 
-import qualified Cardano.Api as C
 import qualified Cardano.Crypto.Wallet as CWCrypto
 import Data.Default
 import Data.Function (on)
@@ -15,7 +15,6 @@ import qualified Ledger.Ada as Pl
 import qualified Ledger.CardanoWallet as CW
 import qualified Ledger.Credential as Pl
 import qualified Ledger.Crypto as Crypto
-import qualified Ledger.Validation as Validation
 import qualified Ledger.Value as Pl
 import Unsafe.Coerce
 
@@ -96,8 +95,8 @@ toPKHMap ws = M.fromList [(walletPKHash w, w) | w <- ws]
 txAddSignature :: Wallet -> Pl.Tx -> Pl.Tx
 txAddSignature w = Pl.addSignature' (walletSK w)
 
-txAddSignatureAPI :: Wallet -> C.Tx C.BabbageEra -> C.Tx C.BabbageEra
-txAddSignatureAPI w = Validation.addSignature (walletSK w)
+txAddSignatureAPI :: Wallet -> Pl.CardanoTx -> Pl.CardanoTx
+txAddSignatureAPI w tx = Pl.addCardanoTxSignature (walletSK w) tx
 
 -- * Initial distribution of funds
 

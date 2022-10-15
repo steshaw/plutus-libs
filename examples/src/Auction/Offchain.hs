@@ -37,7 +37,7 @@ txOpen p = do
       token = Value.assetClassValue (A.threadTokenAssetClass p') 1
 
   _ <-
-    validateTxSkel $
+    validateTxSkel def $
       txSkelOpts (def {adjustUnbalTx = True}) $
         [ Mints
             (Just (Scripts.validatorAddress (A.auctionValidator p')))
@@ -62,10 +62,10 @@ txBid p bid = do
   bidder <- ownPaymentPubKeyHash
   [(utxo, datum)] <- scriptUtxosSuchThat (A.auctionValidator p) (\_ _ -> True)
   void $
-    validateTxSkel $
+    validateTxSkel def $
       txSkelOpts (def {adjustUnbalTx = True}) $
-        [ -- no need to ask for the bidder to sign the transaction, that's automatic
-          Before (A.bidDeadline p),
+        [ Before (A.bidDeadline p),
+          SignedBy [bidder],
           SpendsScript
             (A.auctionValidator p)
             (A.Bid (A.BidderInfo bid bidder))
@@ -88,7 +88,7 @@ txHammer ::
 txHammer p q = do
   [(utxo, datum)] <- scriptUtxosSuchThat (A.auctionValidator p) (\_ _ -> True)
   void $
-    validateTxSkel $
+    validateTxSkel def $
       txSkelOpts (def {adjustUnbalTx = True}) $
         [ After (A.bidDeadline p),
           SpendsScript
