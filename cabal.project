@@ -8,7 +8,7 @@ packages:
 source-repository-package
   type: git
   location: https://github.com/tweag/pirouette.git
-  tag: 41fe7a5836469d1fecde69bf13482d54771926ca
+  tag: c15b4a4741bbae3014ea93a21118ca8e21ee77bf
 
 package cardano-crypto-praos
   flags: -external-libsodium-vrf
@@ -16,7 +16,7 @@ package cardano-crypto-praos
 source-repository-package
   type: git
   location: https://github.com/etiennejf/plutus-apps.git
-  tag: 3eeb9884b567846261947d970784de2a70654e42
+  tag: 3c2930029a00faf728fa5286a2ab3a5f3584c0f8
   subdir:
     freer-extras
     pab-blockfrost
