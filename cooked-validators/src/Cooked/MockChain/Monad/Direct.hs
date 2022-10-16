@@ -231,9 +231,9 @@ utxoIndex0 lparams = utxoIndex0From lparams def
 instance (Monad m) => MonadBlockChain (MockChainT m) where
   validateTxSkel _ skel = do
     (reqSigs, tx) <- generateTx' skel
-    _ <- validateTx' reqSigs tx
+    ctx <- validateTx' reqSigs tx
     when (autoSlotIncrease $ txOpts skel) $ modify' (\st -> st {mcstCurrentSlot = mcstCurrentSlot st + 1})
-    return (Pl.EmulatorTx tx)
+    return ctx
 
   txOutByRef _lparams outref = gets (M.lookup outref . Pl.getIndex . mcstIndex)
 
@@ -303,7 +303,7 @@ runTransactionValidation s lparams ix signers tx =
 
 -- | Check 'validateTx' for details; we pass the list of required signatories since
 -- that is only truly available from the unbalanced tx, so we bubble that up all the way here.
-validateTx' :: (Monad m) => [Pl.PaymentPubKeyHash] -> Pl.Tx -> MockChainT m Pl.TxId
+validateTx' :: (Monad m) => [Pl.PaymentPubKeyHash] -> Pl.Tx -> MockChainT m Pl.CardanoTx
 validateTx' reqSigs tx = do
   s <- currentSlot
   ix <- gets mcstIndex
@@ -330,7 +330,7 @@ validateTx' reqSigs tx = do
                 mcstDatums = (mcstDatums st `M.difference` consumedDHs') `M.union` Pl.getCardanoTxData ctx
               }
         )
-      return $ Pl.getCardanoTxId ctx
+      return ctx
 
 -- | Check 'utxosSuchThat' for details
 utxosSuchThat' ::
