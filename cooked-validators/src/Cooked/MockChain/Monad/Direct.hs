@@ -327,10 +327,13 @@ validateTx' reqSigs tx = do
         ( \st ->
             st
               { mcstIndex = ix',
-                mcstDatums = (mcstDatums st `M.difference` consumedDHs') `M.union` Pl.getCardanoTxData ctx
+                mcstDatums = (mcstDatums st `M.difference` consumedDHs') `M.union` getScriptData cardanoTx
               }
         )
       return ctx
+  where
+    getScriptData :: C.Tx C.BabbageEra -> M.Map Pl.DatumHash Pl.Datum
+    getScriptData (C.Tx txbody _) = fst $ Pl.scriptDataFromCardanoTxBody txbody
 
 -- | Check 'utxosSuchThat' for details
 utxosSuchThat' ::
