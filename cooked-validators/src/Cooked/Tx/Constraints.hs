@@ -5,6 +5,7 @@
 
 module Cooked.Tx.Constraints
   ( module Cooked.Tx.Constraints.Type,
+    module Cooked.Tx.Constraints.Optics,
     module Cooked.Tx.Constraints.Pretty,
     LedgerConstraint,
     extractDatumStr,
@@ -19,6 +20,7 @@ where
 import qualified Cardano.Api as C
 import qualified Cardano.Api.Shelley as C
 import Cooked.MockChain.Wallet
+import Cooked.Tx.Constraints.Optics
 import Cooked.Tx.Constraints.Pretty
 import Cooked.Tx.Constraints.Type
 import qualified Data.List as List
