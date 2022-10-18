@@ -553,8 +553,8 @@ calcBalanceTx lparams w tx = do
       }
 
 -- | Once we calculated what is needed to balance a transaction @tx@, we still need to
--- apply those changes to @tx@. Because of the 'Ledger.minAdaTxOut' constraint, this
--- might not be possible: imagine the leftover is less than 'Ledger.minAdaTxOut', but
+-- apply those changes to @tx@. Because of the 'min ada' constraint, this
+-- might not be possible: imagine the leftover is less than the computed min ada, but
 -- the transaction has no output addressed to the sending wallet. If we just
 -- create a new ouput for @w@ and place the leftover there the resulting tx will fail to validate
 -- with "LessThanMinAdaPerUTxO" error. Instead, we need to consume yet another UTxO belonging to @w@ to
@@ -564,10 +564,10 @@ applyBalanceTx :: Pl.Params -> BalanceOutputPolicy -> Wallet -> BalanceTxRes -> 
 applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) tx = do
   -- Here we'll try a few things, in order, until one of them succeeds:
   --   1. If allowed by the utxoPolicy, pick out the best possible output to adjust and adjust it as long as it remains with
-  --      more than 'Pl.minAdaTxOut'. No need for additional inputs. The "best possible" here means the ada-only
+  --      more than the computed min ada. No need for additional inputs. The "best possible" here means the ada-only
   --      utxo with the most ada and without any datum hash. If the policy doesn't allow modifying an
   --      existing utxo or no such utxo exists, we move on to the next option;
-  --   2. if the leftover is more than 'Pl.minAdaTxOut' and (1) wasn't possible, create a new output
+  --   2. if the leftover is more than the computed min ada and (1) wasn't possible, create a new output
   --      to return leftover. No need for additional inputs.
   --   3. Attempt to consume other possible utxos from 'w' in order to combine them
   --      and return the leftover.
@@ -576,10 +576,11 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
         DontAdjustExistingOutput -> empty
         AdjustExistingOutput -> wOutsBest >>= fmap ([],) . adjustOutputValueAt (<> leftover) (Pl.txOutputs tx)
 
-  (txInsDelta, txOuts') <-
+  (txInsDelta, txOuts') <- do
+    let txout = mkOutWithVal leftover
     asum $
       [ adjustOutputs, -- 1.
-        guard (isAtLeastMinAda leftover) >> return ([], Pl.txOutputs tx ++ [mkOutWithVal leftover]) -- 2.
+        guard (isAtLeastMinAda txout leftover) >> return ([], Pl.txOutputs tx ++ [txout]) -- 2.
       ]
         ++ map (fmap (second (Pl.txOutputs tx ++)) . consumeRemainder) (sortByMoreAda remainders) -- 3.
   let newTxIns' = map (`Pl.TxInput` Pl.TxConsumePublicKeyAddress) (newTxIns ++ txInsDelta)
@@ -610,8 +611,13 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
     adaVal :: Pl.Value -> Integer
     adaVal = Ada.getLovelace . Ada.fromValue
 
-    isAtLeastMinAda :: Pl.Value -> Bool
-    isAtLeastMinAda v = adaVal v >= Ada.getLovelace Pl.minAdaTxOut
+    isAtLeastMinAda :: Pl.TxOut -> Pl.Value -> Bool
+    isAtLeastMinAda txout v =
+      let val = Pl.txOutValue txout <> Ada.toValue Pl.minAdaTxOut
+          withMinAda = either (\err -> error $ "isAtLeastMinAda: cannot create txOutValue" ++ show err) id (Pl.toCardanoTxOutValue val)
+          txout' = txout & Pl.outValue .~ withMinAda
+          minAdaTxOut' = Pl.evaluateMinLovelaceOutput lparams (Pl.fromPlutusTxOut txout')
+       in Ada.fromValue v >= minAdaTxOut'
 
     adjustOutputValueAt :: (Pl.Value -> Pl.Value) -> [Pl.TxOut] -> Int -> Maybe [Pl.TxOut]
     adjustOutputValueAt f xs i =
@@ -619,14 +625,14 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
           val' = f $ Pl.txOutValue txout
           cval' = either (\err -> error $ "adjustOutputValueAt: cannot create txOutValue" ++ show err) id (Pl.toCardanoTxOutValue val')
           txout' = txout & Pl.outValue .~ cval'
-       in guard (isAtLeastMinAda val') >> return (pref ++ txout' : rest)
+       in guard (isAtLeastMinAda txout val') >> return (pref ++ txout' : rest)
 
     -- Given a list of available utxos; attept to consume them if they would enable the returning
     -- of the leftover.
     consumeRemainder :: (Pl.TxOutRef, Pl.TxOut) -> Maybe ([Pl.TxOutRef], [Pl.TxOut])
     consumeRemainder (remRef, remOut) =
       let v = leftover <> Pl.txOutValue remOut
-       in guard (isAtLeastMinAda v) >> return ([remRef], [mkOutWithVal v])
+       in guard (isAtLeastMinAda remOut v) >> return ([remRef], [mkOutWithVal v])
 
 -- * Utilities
 
