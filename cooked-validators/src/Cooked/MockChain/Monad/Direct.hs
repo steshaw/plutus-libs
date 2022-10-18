@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
@@ -287,19 +288,21 @@ runTransactionValidation ::
   Pl.Slot ->
   Pl.Params ->
   Pl.UtxoIndex ->
+  [Pl.PaymentPubKeyHash] ->
   [Wallet] ->
-  Pl.CardanoTx ->
-  (Pl.UtxoIndex, Maybe Pl.ValidationErrorInPhase)
-runTransactionValidation s lparams ix signers tx =
-  let tx' = L.foldl' (flip txAddSignatureAPI) tx signers
-      cIndex = either (error . show) id $ Pl.fromPlutusIndex ix
-      e = Pl.validateCardanoTx lparams s cIndex tx'
+  Pl.Tx ->
+  (Pl.UtxoIndex, Pl.CardanoTx, Maybe Pl.ValidationErrorInPhase)
+runTransactionValidation s lparams ix reqSigs signers tx =
+  let !cIndex = either (error . show) id $ Pl.fromPlutusIndex ix
+      cardanoTx = either (error . show) id $ Pl.fromPlutusTx lparams cIndex reqSigs tx
+      !ctx' = L.foldl' (flip txAddSignatureAPI) (Pl.CardanoApiTx (Pl.CardanoApiEmulatorEraTx cardanoTx)) signers
+      e = Pl.validateCardanoTx lparams s cIndex ctx'
       -- Now we compute the new index
       ix' = case e of
         Just (Pl.Phase1, _) -> ix
-        Just (Pl.Phase2, _) -> Pl.insertCollateral tx ix
-        Nothing -> Pl.insert tx ix
-   in (ix', e)
+        Just (Pl.Phase2, _) -> Pl.insertCollateral ctx' ix
+        Nothing -> Pl.insert ctx' ix
+   in (ix', ctx', e)
 
 -- | Check 'validateTx' for details; we pass the list of required signatories since
 -- that is only truly available from the unbalanced tx, so we bubble that up all the way here.
@@ -309,10 +312,7 @@ validateTx' reqSigs tx = do
   ix <- gets mcstIndex
   ps <- asks mceParams
   signers <- askSigners
-  let cIndex = either (error . show) id $ Pl.fromPlutusIndex ix
-      cardanoTx = either (error . show) id $ Pl.fromPlutusTx ps cIndex reqSigs tx
-      ctx = Pl.CardanoApiTx (Pl.CardanoApiEmulatorEraTx cardanoTx)
-      (ix', status) = runTransactionValidation s ps ix (NE.toList signers) ctx
+  let !(ix', ctx, status) = runTransactionValidation s ps ix reqSigs (NE.toList signers) tx
   case status of
     Just err -> throwError (MCEValidationError err)
     Nothing -> do
@@ -320,20 +320,17 @@ validateTx' reqSigs tx = do
       -- The new mcstIndex is just `ix'`; the new mcstDatums is computed by
       -- removing the datum hashes have been consumed and adding
       -- those that have been created in `tx`.
-      let consumedIns = map Pl.txInRef $ Pl.getCardanoTxInputs ctx ++ Pl.getCardanoTxCollateralInputs ctx
+      let consumedIns = map Pl.txInputRef $ Pl.txInputs tx ++ Pl.txCollateral tx
       consumedDHs <- catMaybes <$> mapM (fmap Pl.txOutDatumHash . outFromOutRef ps) consumedIns
       let consumedDHs' = M.fromList $ zip consumedDHs (repeat ())
       modify'
         ( \st ->
             st
               { mcstIndex = ix',
-                mcstDatums = (mcstDatums st `M.difference` consumedDHs') `M.union` getScriptData cardanoTx
+                mcstDatums = (mcstDatums st `M.difference` consumedDHs') `M.union` Pl.txData tx
               }
         )
       return ctx
-  where
-    getScriptData :: C.Tx C.BabbageEra -> M.Map Pl.DatumHash Pl.Datum
-    getScriptData (C.Tx txbody _) = fst $ Pl.scriptDataFromCardanoTxBody txbody
 
 -- | Check 'utxosSuchThat' for details
 utxosSuchThat' ::
@@ -351,7 +348,7 @@ utxosSuchThat' addr datumPred = do
     go oref txout = do
       -- We begin by attempting to lookup the given datum hash in our map of managed datums.
       managedDatums <- gets mcstDatums
-      let (sout, mdatum) = toChainIndexTxOut txout (Just managedDatums)
+      let !(sout, mdatum) = toChainIndexTxOut txout (Just managedDatums)
       case sout of
         Pl.PublicKeyChainIndexTxOut {Pl._ciTxOutValue} -> do
           let ma = mdatum >>= Pl.fromBuiltinData . Pl.getDatum
@@ -622,7 +619,7 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
     adjustOutputValueAt :: (Pl.Value -> Pl.Value) -> [Pl.TxOut] -> Int -> Maybe [Pl.TxOut]
     adjustOutputValueAt f xs i =
       let (pref, txout : rest) = L.splitAt i xs
-          val' = f $ Pl.txOutValue txout
+          !val' = f $ Pl.txOutValue txout
           cval' = either (\err -> error $ "adjustOutputValueAt: cannot create txOutValue" ++ show err) id (Pl.toCardanoTxOutValue val')
           txout' = txout & Pl.outValue .~ cval'
        in guard (isAtLeastMinAda txout val') >> return (pref ++ txout' : rest)
@@ -631,17 +628,16 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
     -- of the leftover.
     consumeRemainder :: (Pl.TxOutRef, Pl.TxOut) -> Maybe ([Pl.TxOutRef], [Pl.TxOut])
     consumeRemainder (remRef, remOut) =
-      let v = leftover <> Pl.txOutValue remOut
+      let !v = leftover <> Pl.txOutValue remOut
        in guard (isAtLeastMinAda remOut v) >> return ([remRef], [mkOutWithVal v])
 
 -- * Utilities
 
 -- | returns public key hash when txout contains only ada tokens and that no datum hash is specified.
 onlyAdaPkTxOut :: Pl.TxOut -> Maybe Pl.PubKeyHash
-onlyAdaPkTxOut txout@(Pl.txOutPubKey -> Just pkh) =
-  case Pl.flattenValue (Pl.txOutValue txout) of
-    [(cs, tn, _)] | cs == Pl.adaSymbol && tn == Pl.adaToken -> Just pkh
-    _ -> Nothing
+onlyAdaPkTxOut txout@(Pl.txOutPubKey -> Just pkh)
+  | Pl.isAdaOnlyValue (Pl.txOutValue txout) = Just pkh
+  | otherwise = Nothing
 onlyAdaPkTxOut _ = Nothing
 
 addressIsPK :: Pl.Address -> Maybe Pl.PubKeyHash

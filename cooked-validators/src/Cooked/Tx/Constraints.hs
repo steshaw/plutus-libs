@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeApplications #-}
@@ -144,10 +145,10 @@ toChainIndexTxOut (Pl.TxOut (C.TxOut addr val datum refScript)) mdatum =
       addr' = Pl.fromCardanoAddressInEra addr
    in case (Pl.addressCredential addr') of
         Pl.PubKeyCredential _ ->
-          let pkDatum = toPubKeyDatum d
+          let !pkDatum = toPubKeyDatum d
            in (Pl.PublicKeyChainIndexTxOut addr' v pkDatum rs, maybe Nothing snd pkDatum)
         Pl.ScriptCredential vh ->
-          let scrDatum = toScriptDatum d
+          let !scrDatum = toScriptDatum d
            in (Pl.ScriptChainIndexTxOut addr' v scrDatum rs (vh, toVersionedValidator rs), snd scrDatum)
   where
     toVersionedScript :: C.ReferenceScript era -> Maybe (Pl.Versioned Pl.Script)
