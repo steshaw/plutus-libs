@@ -43,8 +43,6 @@ library
     , lens
     , mtl
     , optics-core
-    , pirouette >=2.0.0
-    , pirouette-plutusir
     , playground-common
     , plutus-contract
     , plutus-core
@@ -100,8 +98,6 @@ test-suite spec
     , lens
     , mtl
     , optics-core
-    , pirouette >=2.0.0
-    , pirouette-plutusir
     , playground-common
     , plutus-contract
     , plutus-core

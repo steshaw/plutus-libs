@@ -6,16 +6,16 @@
 
 module Cooked.Tx.Constraints.Pretty where
 
+import Control.Lens
 import Cooked.MockChain.UtxoState
 import Cooked.MockChain.Wallet
 import Cooked.Tx.Constraints.Type
 import Data.Char
 import Data.Default
 import Data.Maybe (catMaybes, mapMaybe)
-import qualified Ledger as Pl hiding (unspentOutputs)
-import qualified Ledger.Scripts as Pl
-import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator, validatorScript)
-import qualified Plutus.Script.Utils.V1.Scripts as Pl
+import qualified Ledger as Pl hiding (mintingPolicyHash, unspentOutputs)
+import qualified Ledger.Typed.Scripts as Pl
+import qualified Plutus.Script.Utils.V2.Scripts as Pl
 import qualified PlutusTx.IsData.Class as Pl
 import Prettyprinter (Doc, (<+>))
 import qualified Prettyprinter as PP
@@ -46,7 +46,7 @@ prettyOutConstraint :: OutConstraint -> Doc ann
 prettyOutConstraint (PaysScript val msc datum value) =
   prettyEnum ("PaysScript" <+> prettyAddressTypeAndHash addr) "-" (map (uncurry (prettyDatumVal val)) [(datum, value)])
   where
-    addr = (Pl.scriptHashAddress $ Pl.validatorHash $ Pl.validatorScript val) {Pl.addressStakingCredential = msc}
+    addr = (Pl.validatorAddress val) {Pl.addressStakingCredential = msc}
 prettyOutConstraint (PaysPKWithDatum pkh stak dat val) =
   prettyEnum
     ("PaysPK" <+> prettyWallet pkh)
@@ -60,7 +60,7 @@ prettyOutConstraint (PaysPKWithDatum pkh stak dat val) =
 
 prettyMiscConstraint :: MiscConstraint -> Doc ann
 prettyMiscConstraint (SpendsPK out) =
-  let (ppAddr, mppVal) = prettyTxOut $ Pl.toTxOut $ snd out
+  let (ppAddr, mppVal) = prettyChainIndexTxOut $ snd out
    in prettyEnum "SpendsPK" "-" $ catMaybes [Just ppAddr, mppVal]
 prettyMiscConstraint (Mints mr policies val) =
   prettyEnum "Mints" "-" $
@@ -92,27 +92,33 @@ prettyScriptOutputDatum ::
   SpendableOut ->
   Doc ann
 prettyScriptOutputDatum _ (_, chainIndexTxOut) =
-  let (ppAddr, mppVal) = prettyTxOut $ Pl.toTxOut chainIndexTxOut
+  let (ppAddr, mppVal) = prettyChainIndexTxOut chainIndexTxOut
    in PP.align $
         PP.vsep $
           catMaybes
             [ Just $ "Output" <+> "at" <+> ppAddr,
-              mppVal,
-              case chainIndexTxOut of
-                Pl.ScriptChainIndexTxOut _ _ (Right datum) _ ->
-                  let typedDatum :: Pl.DatumType a
-                      typedDatum = Pl.unsafeFromBuiltinData (Pl.getDatum datum)
-                   in Just $ "Datum:" <+> prettyDatum typedDatum
-                Pl.ScriptChainIndexTxOut _ _ (Left datumHash) _ ->
-                  Just $ "Datum hash:" <+> prettyHash datumHash
-                _ -> error "Not a script output"
+              mppVal
+              -- TODO
+              -- case chainIndexTxOut of
+              --   Pl.ScriptChainIndexTxOut _ _ (Right datum) _ ->
+              --     let typedDatum :: Pl.DatumType a
+              --         typedDatum = Pl.unsafeFromBuiltinData (Pl.getDatum datum)
+              --      in Just $ "Datum:" <+> prettyDatum typedDatum
+              --   Pl.ScriptChainIndexTxOut _ _ (Left datumHash) _ ->
+              --     Just $ "Datum hash:" <+> prettyHash datumHash
+              --   _ -> error "Not a script output"
             ]
 
-prettyTxOut :: Pl.TxOut -> (Doc ann, Maybe (Doc ann))
-prettyTxOut tout = (prettyAddressTypeAndHash $ Pl.txOutAddress tout, mPrettyValue $ Pl.txOutValue tout)
+prettyChainIndexTxOut :: Pl.ChainIndexTxOut -> (Doc ann, Maybe (Doc ann))
+prettyChainIndexTxOut tout =
+  ( prettyAddressTypeAndHash $ view Pl.ciTxOutAddress tout,
+    mPrettyValue $ view Pl.ciTxOutValue tout
+  )
+
+-- undefined -- (prettyAddressTypeAndHash $ Pl.txOutAddress tout, mPrettyValue $ Pl.txOutValue tout)
 
 prettyTypedValidator :: Pl.TypedValidator a -> Doc ann
-prettyTypedValidator = prettyAddressTypeAndHash . Pl.scriptAddress . Pl.validatorScript
+prettyTypedValidator = prettyAddressTypeAndHash . Pl.validatorAddress
 
 prettyDatumVal ::
   (Show (Pl.DatumType a)) =>

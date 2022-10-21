@@ -12,8 +12,6 @@ module Cooked.Tx.Constraints.Optics where
 
 import Cooked.Tx.Constraints.Type
 import qualified Ledger as L
-import qualified Ledger.Ada as L
-import qualified Ledger.Credential as L
 import qualified Ledger.Typed.Scripts as L
 import qualified Ledger.Value as L
 import Optics.Core
@@ -256,12 +254,12 @@ instance HasValue L.ChainIndexTxOut where
   valueL =
     lens
       ( \case
-          L.PublicKeyChainIndexTxOut _ x -> x
-          L.ScriptChainIndexTxOut _ _ _ x -> x
+          L.PublicKeyChainIndexTxOut _ x _ _ -> x
+          L.ScriptChainIndexTxOut _ x _ _ _ -> x
       )
       ( \o x -> case o of
-          L.PublicKeyChainIndexTxOut a _ -> L.PublicKeyChainIndexTxOut a x
-          L.ScriptChainIndexTxOut a v d _ -> L.ScriptChainIndexTxOut a v d x
+          L.PublicKeyChainIndexTxOut a _ d rs -> L.PublicKeyChainIndexTxOut a x d rs
+          L.ScriptChainIndexTxOut a _ d rs vv -> L.ScriptChainIndexTxOut a x d rs vv
       )
 
 instance HasValue SpendableOut where

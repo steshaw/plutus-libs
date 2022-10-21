@@ -13,18 +13,16 @@
 
 module Cooked.Tx.Constraints.Type where
 
+import Control.Applicative
 import Control.Lens
 import Data.Default
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
-import qualified Ledger as Pl hiding (unspentOutputs)
-import qualified Ledger.Constraints as Pl
+import qualified Ledger as Pl
 import qualified Ledger.Constraints.OffChain as Pl
-import qualified Ledger.Credential as Pl
-import qualified Ledger.Scripts as Pl
-import qualified Ledger.Typed.Scripts as Pl (DatumType, RedeemerType, TypedValidator)
-import qualified PlutusTx as Pl
+import qualified Ledger.Typed.Scripts as Pl
+import qualified Plutus.V2.Ledger.Api as Pl
 import qualified PlutusTx.Prelude as Pl
 import Type.Reflection
 
@@ -34,18 +32,32 @@ type SpendableOut = (Pl.TxOutRef, Pl.ChainIndexTxOut)
 
 -- | Accesses the 'Pl.Value' within a 'SpendableOut'
 sOutValue :: SpendableOut -> Pl.Value
-sOutValue = Pl.txOutValue . Pl.toTxOut . snd
+sOutValue = view Pl.ciTxOutValue . snd
 
 -- | Accesses the 'Pl.Address' within a 'SpendableOut'
 sOutAddress :: SpendableOut -> Pl.Address
-sOutAddress = Pl.txOutAddress . Pl.toTxOut . snd
+sOutAddress = view Pl.ciTxOutAddress . snd
 
 -- | Accesses a potential 'Pl.DatumHash' within a 'SpendableOut'; note that
 --  the existence (or not) of a datum hash /DOES NOT/ indicate the 'SpendableOut'
 --  belongs to a script or a public key; you must pattern match on the result of
 --  'sOutAddress' or use one of 'sBelongsToPubKey' or 'sBelongsToScript' to distinguish that.
 sOutDatumHash :: SpendableOut -> Maybe Pl.DatumHash
-sOutDatumHash = Pl.txOutDatum . Pl.toTxOut . snd
+sOutDatumHash out = sOutScriptDatumHash out <|> sOutPublicKeyDatumHash out
+
+sOutScriptDatumHash :: SpendableOut -> Maybe Pl.DatumHash
+sOutScriptDatumHash out = case view (partsOf Pl.ciTxOutScriptDatum) $ snd out of
+  (dh, _) : _ -> Just dh
+  _ -> Nothing
+
+sOutPublicKeyDatumHash :: SpendableOut -> Maybe Pl.DatumHash
+sOutPublicKeyDatumHash out =
+  case view (partsOf Pl.ciTxOutPublicKeyDatum) $ snd out of
+    Just (dh, _) : _ -> Just dh
+    _ -> Nothing
+
+-- NOTE: The previous three definitions can by nowe be much more explicit, we
+-- sometimes know that there's a datum.
 
 -- | If a 'SpendableOut' belongs to a public key, return its hash.
 sBelongsToPubKey :: SpendableOut -> Maybe Pl.PubKeyHash

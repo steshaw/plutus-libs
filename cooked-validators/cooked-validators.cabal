@@ -72,6 +72,7 @@ library
     , monad-control
     , mtl
     , optics-core
+    , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger
@@ -139,6 +140,7 @@ test-suite spec
     , monad-control
     , mtl
     , optics-core
+    , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger

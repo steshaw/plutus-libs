@@ -17,7 +17,6 @@ import qualified Ledger.Ada as Pl
 import qualified Ledger.CardanoWallet as CW
 import qualified Ledger.Credential as Pl
 import qualified Ledger.Crypto as Crypto
-import qualified Ledger.Validation as Validation
 import qualified Ledger.Value as Pl
 import Unsafe.Coerce
 
@@ -99,7 +98,7 @@ txAddSignature :: Wallet -> Pl.Tx -> Pl.Tx
 txAddSignature w = Pl.addSignature' (walletSK w)
 
 txAddSignatureAPI :: Wallet -> C.Tx C.AlonzoEra -> C.Tx C.AlonzoEra
-txAddSignatureAPI w = Validation.addSignature (walletSK w)
+txAddSignatureAPI w = undefined --Validation.addSignature (walletSK w) TODO
 
 -- * Initial distribution of funds
 
@@ -171,7 +170,9 @@ initialDistribution' :: [(Wallet, [Pl.Value])] -> InitialDistribution
 initialDistribution' = (def <>) . distributionFromList
 
 initialTxFor :: InitialDistribution -> Pl.Tx
-initialTxFor initDist
+initialTxFor = undefined
+
+{- initialTxFor initDist
   | not $ validInitialDistribution initDist =
     error "Not all UTxOs have at least minAda; this initial distribution is unusable"
   | otherwise =
@@ -182,7 +183,7 @@ initialTxFor initDist
   where
     initUtxosFor w v = Pl.TxOut (walletAddress w) v Nothing
 
-    initDist' = M.toList $ distribution initDist
+    initDist' = M.toList $ distribution initDist -}
 
 valuesForWallet :: InitialDistribution -> Wallet -> [Pl.Value]
 valuesForWallet d w = fromMaybe [] $ w `M.lookup` distribution d
