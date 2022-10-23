@@ -51,6 +51,7 @@ import qualified Plutus.V1.Ledger.Api as PV1
 import qualified PlutusTx as Pl
 import qualified PlutusTx.Lattice as PlutusTx
 import qualified PlutusTx.Numeric as Pl
+import qualified PlutusTx.Ratio as R
 
 -- * Direct Emulation
 
@@ -487,7 +488,7 @@ balanceTxFrom ::
   MockChainT m ([Pl.PaymentPubKeyHash], Pl.Tx)
 balanceTxFrom lparams bPol skipBalancing col w ubtx = do
   let requiredSigners = S.toList (Pl.unBalancedTxRequiredSignatories ubtx)
-  colTxIns <- calcCollateral w col
+  colTxIns <- calcCollateral lparams w col
   tx <-
     setFeeAndValidRange bPol w $
       ubtx & Pl.tx . Pl.collateralInputs .~ colTxIns
@@ -496,19 +497,48 @@ balanceTxFrom lparams bPol skipBalancing col w ubtx = do
       then return tx
       else balanceTxFromAux lparams bPol BalFinalizing w tx
 
--- | Calculates the collateral for a some transaction
-calcCollateral :: (Monad m) => Wallet -> Collateral -> MockChainT m [Pl.TxInput]
-calcCollateral w col = do
+-- | Calculates the collateral for a transaction by:
+--   - Ensures that the selected utxos contains at least (collateral_percentage / 100) * min tranasction fee
+--   - Ensures that the number of selected utxos does not exceed maxCollateralInputs
+calcCollateral :: (Monad m) => Pl.Params -> Wallet -> Collateral -> MockChainT m [Pl.TxInput]
+calcCollateral lparams w col = do
   orefs <- case col of
     -- We're given a specific utxo to use as collateral
     CollateralUtxos r -> return r
     -- We must pick them; we'll first select
     CollateralAuto -> do
-      souts <- pkUtxosSuchThat @Void (walletPKHash w) (noDatum .&& valueSat hasOnlyAda)
-      when (null souts) $
+      souts <- map fst <$> pkUtxosSuchThat @Void (walletPKHash w) (noDatum .&& valueSat hasOnlyAda)
+      -- To simplify things we are considering a min transaction fee of 2 Ada
+      let minFeeValue = 2000000
+          mCollateralPercentage = C.protocolParamCollateralPercent $ Pl.pProtocolParams lparams
+          collateralValue = maybe minFeeValue ((computeCollateralValue minFeeValue) . fromIntegral) mCollateralPercentage
+          filtered_souts = utxosWithCollateralValue souts collateralValue
+      when (null filtered_souts) $
         throwError MCENoSuitableCollateral
-      return $ (: []) $ fst $ fst $ head souts
+      return $ map fst filtered_souts
   return $ map (`Pl.TxInput` Pl.TxConsumePublicKeyAddress) orefs
+  where
+    utxosWithCollateralValue :: [SpendableOut] -> Integer -> [SpendableOut]
+    utxosWithCollateralValue utxos collateralValue =
+      -- sorting list in descending order w.r.t. ada value
+      let sorted_list = L.sortBy (\(_, txout1) (_, txout2) -> compare (adaVal (Pl._ciTxOutValue txout2)) (adaVal (Pl._ciTxOutValue txout1))) utxos
+          acc_l = L.scanl1 (+) $ L.map (\(_, t) -> adaVal (Pl._ciTxOutValue t)) sorted_list
+       in case L.findIndex (\i -> i >= collateralValue) acc_l of
+            Just idx ->
+              --- check if number of utxos required does not exceed maxCollateralInputs
+              let maxInputs = maybe (idx + 1) fromIntegral (C.protocolParamMaxCollateralInputs $ Pl.pProtocolParams lparams)
+               in if idx + 1 <= maxInputs
+                    then L.take (idx + 1) sorted_list
+                    else []
+            Nothing -> []
+
+    computeCollateralValue :: Integer -> Integer -> Integer
+    computeCollateralValue minFeeValue collateralPercentage =
+      let r_collateral = (R.unsafeRatio collateralPercentage 100) Pl.* (R.fromInteger minFeeValue)
+          i_round = R.truncate r_collateral
+       in if R.fromInteger i_round < r_collateral
+            then i_round + 1
+            else i_round
 
 balanceTxFromAux :: (Monad m) => Pl.Params -> BalanceOutputPolicy -> BalanceStage -> Wallet -> Pl.Tx -> MockChainT m Pl.Tx
 balanceTxFromAux lparams utxoPolicy stage w tx = do
@@ -605,9 +635,6 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
     sortByMoreAda :: [(a, Pl.TxOut)] -> [(a, Pl.TxOut)]
     sortByMoreAda = L.sortBy (flip compare `on` (adaVal . Pl.txOutValue . snd))
 
-    adaVal :: Pl.Value -> Integer
-    adaVal = Ada.getLovelace . Ada.fromValue
-
     isAtLeastMinAda :: Pl.TxOut -> Pl.Value -> Bool
     isAtLeastMinAda txout v =
       let val = Pl.txOutValue txout <> Ada.toValue Pl.minAdaTxOut
@@ -632,6 +659,10 @@ applyBalanceTx lparams utxoPolicy w (BalanceTxRes newTxIns leftover remainders) 
        in guard (isAtLeastMinAda remOut v) >> return ([remRef], [mkOutWithVal v])
 
 -- * Utilities
+
+-- | returns the number of lovelace in Value
+adaVal :: Pl.Value -> Integer
+adaVal = Ada.getLovelace . Ada.fromValue
 
 -- | returns public key hash when txout contains only ada tokens and that no datum hash is specified.
 onlyAdaPkTxOut :: Pl.TxOut -> Maybe Pl.PubKeyHash
