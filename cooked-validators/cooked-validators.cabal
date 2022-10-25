@@ -37,6 +37,7 @@ library
       Cooked.MockChain.UtxoState
       Cooked.MockChain.UtxoState.Testing
       Cooked.MockChain.Wallet
+      Cooked.PlutusWrappers
       Cooked.Tx.Balance
       Cooked.Tx.Constraints
       Cooked.Tx.Constraints.Optics
@@ -72,7 +73,6 @@ library
     , monad-control
     , mtl
     , optics-core
-    , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger
@@ -140,7 +140,6 @@ test-suite spec
     , monad-control
     , mtl
     , optics-core
-    , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger

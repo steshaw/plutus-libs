@@ -8,16 +8,12 @@ module Cooked.MockChain.Wallet where
 import qualified Cardano.Api as C
 import qualified Cardano.Crypto.Wallet as CWCrypto
 import Control.Arrow
+import qualified Cooked.PlutusWrappers as Pl
 import Data.Default
 import Data.Function (on)
 import qualified Data.Map.Strict as M
 import Data.Maybe
-import qualified Ledger as Pl
-import qualified Ledger.Ada as Pl
-import qualified Ledger.CardanoWallet as CW
-import qualified Ledger.Credential as Pl
 import qualified Ledger.Crypto as Crypto
-import qualified Ledger.Value as Pl
 import Unsafe.Coerce
 
 -- * MockChain Wallets
@@ -28,23 +24,23 @@ import Unsafe.Coerce
 -- provide our own wrapper on top of them to make sure that we can easily deal
 -- changes from Plutus.
 
-type Wallet = CW.MockWallet
+type Wallet = Pl.MockWallet
 
 type PrivateKey = CWCrypto.XPrv
 
 instance Eq Wallet where
-  (==) = (==) `on` CW.mwWalletId
+  (==) = (==) `on` Pl.mwWalletId
 
 instance Ord Wallet where
-  compare = compare `on` CW.mwWalletId
+  compare = compare `on` Pl.mwWalletId
 
 knownWallets :: [Wallet]
-knownWallets = CW.knownMockWallets
+knownWallets = Pl.knownMockWallets
 
 wallet :: Int -> Wallet
 wallet j
   | j > 0 && j <= 10 = let i = j - 1 in knownWallets !! i
-  | otherwise = CW.fromWalletNumber (CW.WalletNumber $ fromIntegral j)
+  | otherwise = Pl.fromWalletNumber (Pl.WalletNumber $ fromIntegral j)
 
 walletPKHashToId :: Pl.PubKeyHash -> Maybe Int
 walletPKHashToId = flip M.lookup walletPKHashToIdMap
@@ -52,7 +48,7 @@ walletPKHashToId = flip M.lookup walletPKHashToIdMap
     walletPKHashToIdMap = M.fromList . flip zip [1 ..] . map walletPKHash $ knownWallets
 
 walletPK :: Wallet -> Pl.PubKey
-walletPK = Pl.unPaymentPubKey . CW.paymentPubKey
+walletPK = Pl.unPaymentPubKey . Pl.paymentPubKey
 
 walletStakingPK :: Wallet -> Maybe Pl.PubKey
 walletStakingPK = fmap Crypto.toPublicKey . walletStakingSK
@@ -69,8 +65,8 @@ walletAddress w =
     (Pl.PubKeyCredential $ walletPKHash w)
     (Pl.StakingHash . Pl.PubKeyCredential <$> walletStakingPKHash w)
 
-walletSK :: CW.MockWallet -> PrivateKey
-walletSK = Pl.unPaymentPrivateKey . CW.paymentPrivateKey
+walletSK :: Pl.MockWallet -> PrivateKey
+walletSK = Pl.unPaymentPrivateKey . Pl.paymentPrivateKey
 
 -- Massive hack to be able to open a MockPrivateKey; this is needed because
 -- the constructor and accessor to MockPrivateKey are not exported. Hence,
@@ -87,7 +83,7 @@ hackUnMockPrivateKey :: a -> CWCrypto.XPrv
 hackUnMockPrivateKey = please . unsafeCoerce
 
 walletStakingSK :: Wallet -> Maybe PrivateKey
-walletStakingSK = fmap hackUnMockPrivateKey . CW.mwStakeKey
+walletStakingSK = fmap hackUnMockPrivateKey . Pl.mwStakeKey
 
 toPKHMap :: [Wallet] -> M.Map Pl.PubKeyHash Wallet
 toPKHMap ws = M.fromList [(walletPKHash w, w) | w <- ws]
@@ -98,7 +94,7 @@ txAddSignature :: Wallet -> Pl.Tx -> Pl.Tx
 txAddSignature w = Pl.addSignature' (walletSK w)
 
 txAddSignatureAPI :: Wallet -> C.Tx C.AlonzoEra -> C.Tx C.AlonzoEra
-txAddSignatureAPI w = undefined --Validation.addSignature (walletSK w) TODO
+txAddSignatureAPI w = undefined --Validation.addSignature (walletSK w) -- TODO is there a reason why we should use Alonzo vs. Babbage?
 
 -- * Initial distribution of funds
 
@@ -138,16 +134,14 @@ newtype InitialDistribution = InitialDistribution {distribution :: M.Map Wallet 
 validInitialDistribution :: InitialDistribution -> Bool
 validInitialDistribution = all (all hasMinAda . snd) . M.toList . distribution
   where
-    hasMinAda vl = minAda `Pl.leq` vl
-
--- | Proxy to 'Pl.minAdaTxOut' as a 'Pl.Value'
-minAda :: Pl.Value
-minAda = Pl.toValue Pl.minAdaTxOut
+    hasMinAda vl = Pl.minAdaValue `Pl.leq` vl
 
 ensureHasMinAda :: Pl.Value -> Pl.Value
-ensureHasMinAda val = val <> Pl.toValue missingAda
+ensureHasMinAda val = val <> missingAda
   where
-    missingAda = max 0 $ Pl.minAdaTxOut - Pl.fromValue val
+    missingAda =
+      let delta = Pl.minAdaValue <> Pl.negate (Pl.adaOnlyValue val)
+       in if mempty `Pl.lt` delta then delta else mempty
 
 instance Semigroup InitialDistribution where
   (InitialDistribution i) <> (InitialDistribution j) = InitialDistribution $ M.unionWith (<>) i j

@@ -19,17 +19,14 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Writer
 import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
+import Cooked.PlutusWrappers
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints
 import Data.Function (on)
 import Data.Kind
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromJust)
-import qualified Ledger as Pl
-import qualified Ledger.Credential as Pl
-import qualified Ledger.Scripts as Pl
-import qualified Ledger.TimeSlot as Pl
-import qualified Ledger.Typed.Scripts as Pl (DatumType, TypedValidator, validatorAddress)
-import qualified PlutusTx as Pl (FromData)
+import Optics.Core
 
 -- * BlockChain Monad
 
@@ -133,13 +130,13 @@ spOutResolveDatum ::
   MonadBlockChain m =>
   SpendableOut ->
   m SpendableOut
-spOutResolveDatum (txOutRef, chainIndexTxOut@(Pl.ScriptChainIndexTxOut _ _ (Left _) _)) = do
+spOutResolveDatum (txOutRef, chainIndexTxOut@(Pl.ScriptChainIndexTxOut _ _ (_, Nothing) _ _)) = do
   mDatum <- datumFromTxOut chainIndexTxOut
   case mDatum of
     Nothing -> fail "datum hash not found in block chain state"
     Just datum ->
       return
-        (txOutRef, chainIndexTxOut {Pl._ciTxOutDatum = Right datum})
+        (txOutRef, chainIndexTxOut & Pl.ciTxOutDatumAT .~ datum)
 spOutResolveDatum spOut = return spOut
 
 -- | Retrieve the ordered list of "SpendableOutput" corresponding to each
@@ -221,10 +218,12 @@ pkUtxos pkh = pkUtxosSuchThatValue pkh (const True)
 -- | Return all UTxOs belonging to a pubkey, but keep them as 'Pl.TxOut'. This is
 --  for internal use.
 pkUtxos' :: (MonadBlockChain m) => Pl.PubKeyHash -> m [(Pl.TxOutRef, Pl.TxOut)]
-pkUtxos' pkh = map (second go) <$> pkUtxos pkh
-  where
-    go (Pl.PublicKeyChainIndexTxOut a v) = Pl.TxOut a v Nothing
-    go _ = error "pkUtxos must return only Pl.PublicKeyChainIndexTxOut's"
+pkUtxos' pkh = undefined
+
+-- map (second go) <$> pkUtxos pkh
+-- where
+--   go (Pl.PublicKeyChainIndexTxOut addr val _ _) = Pl.TxOut addr val Nothing
+--   go _ = error "pkUtxos must return only Pl.PublicKeyChainIndexTxOut's"
 
 -- ** Slot and Time Management
 
@@ -284,14 +283,14 @@ signs :: (MonadMockChain m) => Wallet -> m a -> m a
 signs = flip as
 
 -- | Return the 'Pl.SlotConfig' contained within the current 'Pl.Params'
-slotConfig :: (MonadMockChain m) => m Pl.SlotConfig
+slotConfig :: (MonadMockChain m) => m SlotConfig
 slotConfig = Pl.pSlotConfig <$> params
 
 -- | Set higher limits on transaction size and execution units.
 -- This can be used to work around @MaxTxSizeUTxO@ and @ExUnitsTooBigUTxO@ errors.
 -- Note that if you need this your Plutus script will probably not validate on Mainnet.
 allowBigTransactions :: (MonadMockChain m) => m a -> m a
-allowBigTransactions = localParams Pl.allowBigTransactions
+allowBigTransactions = localParams Pl.increaseTransactionLimits
 
 -- ** Deriving further 'MonadBlockChain' instances
 
