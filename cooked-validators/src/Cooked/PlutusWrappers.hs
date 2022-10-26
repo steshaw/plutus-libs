@@ -15,6 +15,8 @@ module Cooked.PlutusWrappers
     fromTxOut,
     minAdaValue,
     txOutValueL,
+    babbageTxOut,
+    lovelacesIn,
     -- re-exports
     (PlutusTx.Numeric.-),
     Ledger.Ada.lovelaceValueOf,
@@ -74,6 +76,7 @@ module Cooked.PlutusWrappers
     Plutus.V1.Ledger.Value.adaToken,
     Plutus.V1.Ledger.Value.flattenValue,
     Plutus.V1.Ledger.Value.leq,
+    Plutus.V1.Ledger.Value.geq,
     Plutus.V1.Ledger.Value.lt,
     PlutusTx.FromData,
     PlutusTx.Numeric.negate,
@@ -82,10 +85,15 @@ module Cooked.PlutusWrappers
     Scripts.TypedValidator,
     Scripts.validatorAddress,
     V2Api.Credential (..),
+    Ledger.TxInput (..),
+    Ledger.TxInputType (..), -- what's the deal with TxIn vs TxInput?
+    Cardano.ReferenceScript (..),
+    V2Api.OutputDatum (..),
   )
 where
 
 import qualified Cardano.Api as Cardano
+import qualified Cardano.Api.Shelley as Cardano
 import Data.Either
 import qualified Ledger
 import qualified Ledger.Ada
@@ -107,10 +115,43 @@ import qualified PlutusTx.Numeric
 minAdaValue :: Ledger.Value
 minAdaValue = Ledger.Ada.toValue Ledger.minAdaTxOut
 
+-- | How many Lovelaces are in the given value?
+lovelacesIn :: Ledger.Value -> Integer
+lovelacesIn v = Ledger.Value.valueOf v Ledger.Ada.adaSymbol Ledger.Ada.adaToken
+
 -- * Working with 'TxOut's
 
+-- | A smart constructor for Babbage era 'TxOut's.
+babbageTxOut ::
+  Ledger.Address ->
+  Ledger.Value ->
+  V2Api.OutputDatum ->
+  Ledger.ReferenceScript ->
+  Either Ledger.ToCardanoError Ledger.TxOut
+babbageTxOut addr val dat rScr =
+  Ledger.TxOut
+    <$> ( Cardano.TxOut
+            <$> Ledger.Tx.CardanoAPI.toCardanoAddressInEra
+              Cardano.Mainnet -- is this appropriate?
+              addr
+              <*> ( Cardano.TxOutValue Cardano.MultiAssetInBabbageEra
+                      <$> Ledger.Tx.CardanoAPI.toCardanoValue val
+                  )
+              <*> Ledger.Tx.CardanoAPI.toCardanoTxOutDatum dat
+              <*> pure rScr
+        )
+
+-- Cardano.TxOut
+--   ( Cardano.makeByronAddressInEra
+--       Cardano.Mainnet
+--       undefined
+--   )
+--   (Cardano.TxOutValue undefined val)
+--   undefined
+--   rScr
+
 fromTxOut :: Ledger.TxOut -> Maybe Ledger.ChainIndexTxOut
-fromTxOut = undefined -- TODO: look at (the documentation at) 'toTxInfoTxOut, which shuold be a left inverse of this function.
+fromTxOut = undefined -- TODO: look at (the documentation at) 'toTxInfoTxOut, which should be a left inverse of this function.
 
 -- | There's always a 'Value' in a 'TxOut', at least that's what I hope. I
 -- haven't yet understood the conditions under which 'txOutValueI' fails, and if

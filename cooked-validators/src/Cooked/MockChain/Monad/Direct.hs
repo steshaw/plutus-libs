@@ -24,6 +24,7 @@ import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Balance
 import Cooked.Tx.Constraints
 import Data.Default
+import Data.Either.Combinators
 import Data.Foldable (asum)
 import Data.Function (on)
 import qualified Data.List as L
@@ -32,6 +33,7 @@ import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified Data.Set as S
 import Data.Void
+import Optics.Core
 
 -- * Direct Emulation
 
@@ -563,14 +565,14 @@ data BalanceTxRes = BalanceTxRes
 calcBalanceTx :: (Monad m) => Wallet -> Pl.Tx -> MockChainT m BalanceTxRes
 calcBalanceTx w tx = do
   -- We start by gathering all the inputs and summing it
-  lhsInputs <- mapM (outFromOutRef . Pl.txInRef) (S.toList (Pl.txInputs tx))
+  let usedInTxIns = map Pl.txInputRef (Pl.txInputs tx)
+  lhsInputs <- mapM outFromOutRef usedInTxIns
   let lhs = mappend (mconcat $ map Pl.txOutValue lhsInputs) (Pl.txMint tx)
   let rhs = mappend (mconcat $ map Pl.txOutValue $ Pl.txOutputs tx) (Pl.txFee tx)
   let wPKH = walletPKHash w
-  let usedInTxIns = S.map Pl.txInRef (Pl.txInputs tx)
   allUtxos <- pkUtxos' wPKH
   -- It is important that we only consider utxos that have not been spent in the transaction as "available"
-  let availableUtxos = filter ((`S.notMember` usedInTxIns) . fst) allUtxos
+  let availableUtxos = filter ((`L.notElem` usedInTxIns) . fst) allUtxos
   let (usedUTxOs, leftOver, excess) = balanceWithUTxOs (rhs Pl.- lhs) availableUtxos
   return $
     BalanceTxRes
@@ -613,7 +615,7 @@ applyBalanceTx utxoPolicy w (BalanceTxRes newTxIns leftover remainders) tx = do
         guard (isAtLeastMinAda leftover) >> return ([], Pl.txOutputs tx ++ [mkOutWithVal leftover]) -- 2.
       ]
         ++ map (fmap (second (Pl.txOutputs tx ++)) . consumeRemainder) (sortByMoreAda remainders) -- 3.
-  let newTxIns' = S.fromList $ map (`Pl.TxIn` Just Pl.ConsumePublicKeyAddress) (newTxIns ++ txInsDelta)
+  let newTxIns' = map (`Pl.TxInput` Pl.TxConsumePublicKeyAddress) (newTxIns ++ txInsDelta)
   return $
     tx
       { Pl.txInputs = Pl.txInputs tx <> newTxIns',
@@ -621,7 +623,13 @@ applyBalanceTx utxoPolicy w (BalanceTxRes newTxIns leftover remainders) tx = do
       }
   where
     wPKH = walletPKHash w
-    mkOutWithVal v = Pl.TxOut (Pl.Address (Pl.PubKeyCredential wPKH) Nothing) v Nothing
+    mkOutWithVal v =
+      fromRight' $
+        Pl.babbageTxOut
+          (Pl.Address (Pl.PubKeyCredential wPKH) Nothing)
+          v
+          Pl.NoOutputDatum
+          Pl.ReferenceScriptNone
 
     -- The best output to attempt and modify, if any, is the one with the most ada,
     -- which is at the head of wOutsIxSorted:
@@ -636,7 +644,7 @@ applyBalanceTx utxoPolicy w (BalanceTxRes newTxIns leftover remainders) tx = do
             zip [0 ..] (Pl.txOutputs tx)
 
     sortByMoreAda :: [(a, Pl.TxOut)] -> [(a, Pl.TxOut)]
-    sortByMoreAda = L.sortBy (flip compare `on` (adaVal . Pl.txOutValue . snd))
+    sortByMoreAda = L.sortBy (flip compare `on` (Pl.lovelacesIn . Pl.txOutValue . snd))
 
     isAtLeastMinAda :: Pl.Value -> Bool
     isAtLeastMinAda v = Pl.minAdaValue `Pl.leq` v
@@ -644,7 +652,7 @@ applyBalanceTx utxoPolicy w (BalanceTxRes newTxIns leftover remainders) tx = do
     adjustOutputValueAt :: (Pl.Value -> Pl.Value) -> [Pl.TxOut] -> Int -> Maybe [Pl.TxOut]
     adjustOutputValueAt f xs i =
       let (pref, out : rest) = L.splitAt i xs
-          val = out ^. Pl.txOutValueL
+          val = Pl.txOutValue out
           val' = f val
        in guard (isAtLeastMinAda val') >> return (pref ++ (out & Pl.txOutValueL .~ val') : rest)
 
