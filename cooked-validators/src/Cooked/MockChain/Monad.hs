@@ -19,7 +19,6 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Writer
 import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
-import Cooked.PlutusWrappers
 import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints
 import Data.Function (on)
@@ -283,7 +282,7 @@ signs :: (MonadMockChain m) => Wallet -> m a -> m a
 signs = flip as
 
 -- | Return the 'Pl.SlotConfig' contained within the current 'Pl.Params'
-slotConfig :: (MonadMockChain m) => m SlotConfig
+slotConfig :: (MonadMockChain m) => m Pl.SlotConfig
 slotConfig = Pl.pSlotConfig <$> params
 
 -- | Set higher limits on transaction size and execution units.

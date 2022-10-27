@@ -82,8 +82,8 @@ prettyMiscConstraint (ValidateIn timeRange) = "ValidateIn:" <+> PP.pretty timeRa
 prettyHash :: (Show a) => a -> Doc ann
 prettyHash = PP.pretty . take 6 . show
 
-prettyMintingPolicy :: Pl.MintingPolicy -> Doc ann
-prettyMintingPolicy = prettyHash . Pl.mintingPolicyHash
+prettyMintingPolicy :: Pl.Versioned Pl.MintingPolicy -> Doc ann
+prettyMintingPolicy = prettyHash . Pl.mintingPolicyHash . Pl.unversioned
 
 prettyScriptOutputDatum ::
   forall a ann.

@@ -18,8 +18,11 @@ module Cooked.PlutusWrappers
     babbageTxOut,
     lovelacesIn,
     txOutValueUnsafeI,
+    asV2Script,
+    singletonConstraint,
     -- re-exports
     (PlutusTx.Numeric.-),
+    Cardano.ReferenceScript (..),
     Ledger.Ada.lovelaceValueOf,
     Ledger.Address (..),
     Ledger.CardanoTx (..),
@@ -49,9 +52,12 @@ module Cooked.PlutusWrappers
     Ledger.TimeSlot.slotToBeginPOSIXTime,
     Ledger.TimeSlot.slotToEndPOSIXTime,
     Ledger.TimeSlot.slotToPOSIXTimeRange,
+    Ledger.POSIXTimeRange,
     Ledger.Tx (..),
     Ledger.TxIn (..),
     Ledger.TxInType (..),
+    Ledger.TxInput (..),
+    Ledger.TxInputType (..), -- what's the deal with TxIn vs TxInput?
     Ledger.TxOut (..),
     Ledger.TxOutRef,
     Ledger.UtxoIndex,
@@ -60,7 +66,7 @@ module Cooked.PlutusWrappers
     Ledger.Value,
     Ledger.Value.adaOnlyValue,
     Ledger.Value.isAdaOnlyValue,
-    Ledger.Versioned,
+    Ledger.Versioned (..),
     Ledger.addSignature',
     Ledger.fromMilliSeconds,
     Ledger.getCardanoTxOutRefs,
@@ -68,6 +74,7 @@ module Cooked.PlutusWrappers
     Ledger.increaseTransactionLimits,
     Ledger.initialise,
     Ledger.pubKeyHash,
+    Ledger.toTxInfoTxOut,
     Ledger.toTxOut,
     Ledger.txOutAddress,
     Ledger.txOutDatumHash,
@@ -76,20 +83,62 @@ module Cooked.PlutusWrappers
     Plutus.V1.Ledger.Value.adaSymbol,
     Plutus.V1.Ledger.Value.adaToken,
     Plutus.V1.Ledger.Value.flattenValue,
-    Plutus.V1.Ledger.Value.leq,
     Plutus.V1.Ledger.Value.geq,
+    Plutus.V1.Ledger.Value.leq,
     Plutus.V1.Ledger.Value.lt,
     PlutusTx.FromData,
     PlutusTx.Numeric.negate,
     PlutusTx.fromBuiltinData,
-    Scripts.DatumType,
     Scripts.TypedValidator,
     Scripts.validatorAddress,
+    Scripts.validatorScript,
     V2Api.Credential (..),
-    Ledger.TxInput (..),
-    Ledger.TxInputType (..), -- what's the deal with TxIn vs TxInput?
-    Cardano.ReferenceScript (..),
     V2Api.OutputDatum (..),
+    Ledger.TokenName,
+    (PlutusTx.Prelude.==),
+    PlutusTx.Prelude.trace,
+    Ledger.ScriptContext (..),
+    Ledger.TxInfo (..),
+    Ledger.ownCurrencySymbol,
+    Ledger.mkMintingPolicyScript,
+    Ledger.MintingPolicy,
+    PlutusTx.compile,
+    Scripts.mkUntypedMintingPolicy,
+    PlutusTx.applyCode,
+    PlutusTx.liftCode,
+    Ledger.scriptCurrencySymbol,
+    Ledger.Value.singleton,
+    Plutus.V1.Ledger.Value.tokenName,
+    Plutus.V1.Ledger.Value.assetClass,
+    Plutus.V1.Ledger.Value.assetClassValue,
+    Scripts.Language (..),
+    Scripts.ValidatorTypes (..),
+    PlutusTx.ToData (..),
+    PlutusTx.Prelude.Eq,
+    Ledger.StakePubKeyHash (..),
+    Ledger.AssetClass,
+    Ledger.Constraints.ScriptLookups,
+    Ledger.Constraints.TxConstraints,
+    Ledger.datumHash,
+    Ledger.Constraints.otherScript,
+    Ledger.Constraints.mustSpendScriptOutput,
+    Ledger.Constraints.mustMintValueWithRedeemer,
+    Ledger.Constraints.mustMintValue,
+    Ledger.Constraints.mustValidateIn,
+    Ledger.Constraints.mustBeSignedBy,
+    Ledger.Constraints.mustSpendPubKeyOutput,
+    Ledger.Constraints.ownStakePubKeyHash,
+    Ledger.Constraints.otherData,
+    Ledger.Constraints.TxConstraint (..),
+    Ledger.PaymentPubKeyHash (..),
+    Ledger.Constraints.TxOutDatum (..),
+    Ledger.from,
+    Ledger.to,
+    Ledger.Redeemer (..),
+    Scripts.validatorHash,
+    Ledger.StakeValidatorHash (..),
+    Ledger.Constraints.unspentOutputs,
+    Ledger.Constraints.mintingPolicy,
   )
 where
 
@@ -100,6 +149,7 @@ import qualified Ledger
 import qualified Ledger.Ada
 import qualified Ledger.CardanoWallet
 import qualified Ledger.Constraints
+import qualified Ledger.Constraints.TxConstraints
 import qualified Ledger.TimeSlot
 import qualified Ledger.Tx.CardanoAPI
 import qualified Ledger.Typed.Scripts as Scripts
@@ -111,6 +161,7 @@ import qualified Plutus.V1.Ledger.Value
 import qualified Plutus.V2.Ledger.Api as V2Api
 import qualified PlutusTx
 import qualified PlutusTx.Numeric
+import qualified PlutusTx.Prelude
 
 -- * Some easy definitions
 
@@ -144,6 +195,15 @@ babbageTxOut addr val dat rScr =
               <*> pure rScr
         )
 
+{- Carl Hammann 7 minutes ago
+Ah, I think now I understand: If the reference script is present, it'll not be
+just some arbitrary script that has something to say in the transaction under
+validation, but the very same script that the output belongs to, right? That
+wasn't evident from all of the documentation I read so far.
+
+Jean-Frederic Etienne 6 minutes ago
+Yep
+  -}
 ciTxOutFromTxOut :: Ledger.TxOut -> Maybe Ledger.ChainIndexTxOut
 ciTxOutFromTxOut (Ledger.TxOut (Cardano.TxOut cAddr cVal cDat cRScr)) =
   let addr = Ledger.Tx.CardanoAPI.fromCardanoAddressInEra cAddr
@@ -237,3 +297,9 @@ ciTxOutDatumHashAF =
 
 ciTxOutDatumHash :: Ledger.ChainIndexTxOut -> Maybe Ledger.DatumHash
 ciTxOutDatumHash = (^? ciTxOutDatumHashAF)
+
+asV2Script :: script -> Scripts.Versioned script
+asV2Script = flip Scripts.Versioned Scripts.PlutusV2
+
+singletonConstraint :: Ledger.Constraints.TxConstraint -> Ledger.Constraints.TxConstraints i o
+singletonConstraint = Ledger.Constraints.TxConstraints.singleton

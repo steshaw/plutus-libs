@@ -1,21 +1,10 @@
 module Cooked.MockChain.Constraints where
 
-import Control.Arrow (second)
 import Cooked.MockChain.Monad
 import qualified Cooked.PlutusWrappers as Pl
-import Cooked.Tx.Balance (spendValueFrom)
 import Cooked.Tx.Constraints.Type
 
 -- ** Some supplementary constraints, relying on being in the monad.
-
--- | Spends some value from a pubkey by selecting the needed utxos belonging
---  to that pubkey and returning the leftover to the same pubkey.
-spentByPK :: MonadBlockChain m => Pl.PubKeyHash -> Pl.Value -> m Constraints
-spentByPK pkh val = do
-  -- TODO: maybe turn spentByPK into a pure function: spentByPK val <$> pkUtxos
-  allOuts <- pkUtxos pkh
-  let (toSpend, leftOver, _) = spendValueFrom val $ map (second Pl.toTxOut) allOuts
-  (:=>: [paysPK pkh leftOver]) . map SpendsPK <$> mapM spendableRef toSpend
 
 -- | Enforces the transaction to be vadiated at a precise slot.
 -- It requires to be in the mock chain monad, since slots can be translated to an explicit time range

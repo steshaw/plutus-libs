@@ -216,7 +216,7 @@ data MiscConstraint where
   Mints ::
     MintsConstrs a =>
     Maybe a ->
-    [Pl.MintingPolicy] ->
+    [Pl.Versioned Pl.MintingPolicy] ->
     Pl.Value ->
     MiscConstraint
   -- | Ensure that the transaction happens no later than the given time (the end
@@ -317,7 +317,7 @@ paysPK pkh = PaysPKWithDatum @() pkh Nothing Nothing
 paysScript :: (PaysScriptConstrs a) => Pl.TypedValidator a -> Pl.DatumType a -> Pl.Value -> OutConstraint
 paysScript tv = PaysScript tv Nothing
 
-mints :: [Pl.MintingPolicy] -> Pl.Value -> MiscConstraint
+mints :: [Pl.Versioned Pl.MintingPolicy] -> Pl.Value -> MiscConstraint
 mints = Mints @() Nothing
 
 type LabelConstrs x = (Show x, Typeable x, Eq x)

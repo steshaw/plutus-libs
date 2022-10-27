@@ -14,17 +14,19 @@ module Cooked.Tx.Constraints
 where
 
 import Cooked.MockChain.Wallet
+-- import qualified Ledger as Pl hiding (TxOut (..), singleton, txOutAddress, txOutDatumHash, txOutValue, unspentOutputs, validatorHash)
+-- import qualified Ledger.Constraints as Pl
+-- import qualified Ledger.Constraints.TxConstraints as Pl
+-- import qualified Ledger.Typed.Scripts as Pl
+-- import qualified Plutus.V1.Ledger.Api as Pl hiding (singleton)
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints.Optics
 import Cooked.Tx.Constraints.Pretty
 import Cooked.Tx.Constraints.Type
+import Data.Either.Combinators
 import Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Map.Strict as M
-import qualified Ledger as Pl hiding (TxOut (..), singleton, txOutAddress, txOutDatumHash, txOutValue, unspentOutputs, validatorHash)
-import qualified Ledger.Constraints as Pl
-import qualified Ledger.Constraints.TxConstraints as Pl
-import qualified Ledger.Typed.Scripts as Pl
-import qualified Plutus.V1.Ledger.Api as Pl hiding (singleton)
 
 -- * Converting 'Constraint's to 'Pl.ScriptLookups', 'Pl.TxConstraints'
 
@@ -60,7 +62,7 @@ instance ToLedgerConstraint MiscConstraint where
   toLedgerConstraint (SpendsScript v r (oref, o)) = (lkups, constr)
     where
       lkups =
-        Pl.otherScript (asV2Script $ Pl.validatorScript v)
+        Pl.otherScript (Pl.asV2Script $ Pl.validatorScript v)
           <> Pl.unspentOutputs (M.singleton oref o)
       constr = Pl.mustSpendScriptOutput oref (Pl.Redeemer $ Pl.toBuiltinData r)
   toLedgerConstraint (SpendsPK (oref, o)) = (lkups, constr)
@@ -69,11 +71,11 @@ instance ToLedgerConstraint MiscConstraint where
       constr = Pl.mustSpendPubKeyOutput oref
   toLedgerConstraint (Mints Nothing pols v) = (lkups, constr)
     where
-      lkups = foldMap (Pl.mintingPolicy . asV2Script) pols
+      lkups = foldMap Pl.mintingPolicy pols
       constr = Pl.mustMintValue v
   toLedgerConstraint (Mints (Just r) pols v) = (lkups, constr)
     where
-      lkups = foldMap (Pl.mintingPolicy . asV2Script) pols
+      lkups = foldMap Pl.mintingPolicy pols
       constr = Pl.mustMintValueWithRedeemer (Pl.Redeemer (Pl.toBuiltinData r)) v
   toLedgerConstraint (Before t) = (mempty, constr)
     where
@@ -83,9 +85,6 @@ instance ToLedgerConstraint MiscConstraint where
       constr = Pl.mustValidateIn (Pl.from t)
   toLedgerConstraint (ValidateIn r) = (mempty, Pl.mustValidateIn r)
   toLedgerConstraint (SignedBy hashes) = (mempty, foldMap (Pl.mustBeSignedBy . Pl.PaymentPubKeyHash) hashes)
-
-asV2Script :: script -> Pl.Versioned script
-asV2Script s = Pl.Versioned s Pl.PlutusV2
 
 instance ToLedgerConstraint OutConstraint where
   extractDatumStr (PaysScript _validator _ datum _value) =
@@ -103,7 +102,7 @@ instance ToLedgerConstraint OutConstraint where
           -- a different 'WithOwnStakePubKeyHash' constraint?
           <> maybe mempty Pl.ownStakePubKeyHash stak
       constr =
-        Pl.singleton $
+        Pl.singletonConstraint $
           Pl.MustPayToPubKeyAddress
             (Pl.PaymentPubKeyHash p)
             stak
@@ -112,9 +111,9 @@ instance ToLedgerConstraint OutConstraint where
             v
   toLedgerConstraint (PaysScript v msc datum value) = (lkups, constr)
     where
-      lkups = Pl.otherScript (asV2Script $ Pl.validatorScript v)
+      lkups = Pl.otherScript (Pl.asV2Script $ Pl.validatorScript v)
       constr =
-        Pl.singleton
+        Pl.singletonConstraint
           ( Pl.MustPayToOtherScript
               (Pl.validatorHash v)
               (msc >>= getStakeValidatorHash)
@@ -122,7 +121,7 @@ instance ToLedgerConstraint OutConstraint where
               Nothing -- of type Maybe ScriptHash. Is this a reference script? TODO
               value
           )
-          <> Pl.singleton (Pl.MustIncludeDatumInTx $ Pl.Datum $ Pl.toBuiltinData datum)
+          <> Pl.singletonConstraint (Pl.MustIncludeDatumInTx $ Pl.Datum $ Pl.toBuiltinData datum)
       -- Retrieve StakeValidatorHash from StakingCredential. This is similar to what plutus-apps does.
       -- See lines 141-146 in plutus-apps/plutus-ledger-constraints/test/Spec.hs (commit hash 02ae267)
       getStakeValidatorHash :: Pl.StakingCredential -> Maybe Pl.StakeValidatorHash
@@ -148,21 +147,26 @@ instance ToLedgerConstraint Constraints where
 -- constraint 'OutConstraint'.
 outConstraintToTxOut :: OutConstraint -> Pl.TxOut
 outConstraintToTxOut (PaysPKWithDatum pkh mStakePkh mDatum value) =
-  Pl.TxOut
-    { Pl.txOutAddress =
-        Pl.Address
+  fromRight' $ -- TODO when is this safe?
+    Pl.babbageTxOut
+      ( Pl.Address
           (Pl.PubKeyCredential pkh)
-          (Pl.StakingHash . Pl.PubKeyCredential . Pl.unStakePubKeyHash <$> mStakePkh),
-      Pl.txOutValue = value,
-      Pl.txOutDatumHash = Pl.datumHash . Pl.Datum . Pl.toBuiltinData <$> mDatum
-    }
+          (Pl.StakingHash . Pl.PubKeyCredential . Pl.unStakePubKeyHash <$> mStakePkh)
+      )
+      value
+      ( case mDatum of
+          Nothing -> Pl.NoOutputDatum
+          Just d -> Pl.OutputDatum . Pl.Datum . Pl.toBuiltinData $ d
+      )
+      Pl.ReferenceScriptNone
 outConstraintToTxOut (PaysScript validator msc datum value) =
-  let outAddr = appendStakingCredential msc $ Pl.scriptHashAddress $ Pl.validatorHash validator
-   in Pl.TxOut
-        { Pl.txOutAddress = outAddr,
-          Pl.txOutValue = value,
-          Pl.txOutDatumHash = Just . Pl.datumHash . Pl.Datum . Pl.toBuiltinData $ datum
-        }
+  let outAddr = appendStakingCredential msc $ Pl.validatorAddress validator
+   in fromRight' $
+        Pl.babbageTxOut
+          outAddr
+          value
+          (Pl.OutputDatum . Pl.Datum . Pl.toBuiltinData $ datum)
+          Pl.ReferenceScriptNone
   where
     appendStakingCredential :: Maybe Pl.StakingCredential -> Pl.Address -> Pl.Address
     appendStakingCredential Nothing addr = addr
