@@ -21,6 +21,7 @@ dependencies:
   - lens
   - monad-control
   - mtl
+  - plutus-chain-index-core
   - plutus-contract
   - plutus-core
   - plutus-ledger

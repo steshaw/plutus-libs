@@ -12,11 +12,12 @@ module Cooked.PlutusWrappers
     ciTxOutDatumAT,
     ciTxOutDatumHash,
     ciTxOutDatumHashAF,
-    fromTxOut,
+    ciTxOutFromTxOut,
     minAdaValue,
     txOutValueL,
     babbageTxOut,
     lovelacesIn,
+    txOutValueUnsafeI,
     -- re-exports
     (PlutusTx.Numeric.-),
     Ledger.Ada.lovelaceValueOf,
@@ -104,6 +105,8 @@ import qualified Ledger.Tx.CardanoAPI
 import qualified Ledger.Typed.Scripts as Scripts
 import qualified Ledger.Value
 import Optics.Core
+import qualified Plutus.ChainIndex
+import qualified Plutus.Contract.CardanoAPI
 import qualified Plutus.V1.Ledger.Value
 import qualified Plutus.V2.Ledger.Api as V2Api
 import qualified PlutusTx
@@ -141,40 +144,65 @@ babbageTxOut addr val dat rScr =
               <*> pure rScr
         )
 
--- Cardano.TxOut
---   ( Cardano.makeByronAddressInEra
---       Cardano.Mainnet
---       undefined
---   )
---   (Cardano.TxOutValue undefined val)
---   undefined
---   rScr
+ciTxOutFromTxOut :: Ledger.TxOut -> Maybe Ledger.ChainIndexTxOut
+ciTxOutFromTxOut (Ledger.TxOut (Cardano.TxOut cAddr cVal cDat cRScr)) =
+  let addr = Ledger.Tx.CardanoAPI.fromCardanoAddressInEra cAddr
+      val = Ledger.Tx.CardanoAPI.fromCardanoTxOutValue cVal
+      dat = Ledger.Tx.CardanoAPI.fromCardanoTxOutDatum cDat
+      -- If the reference script cannot be translated into a 'Versioned Script',
+      -- we're not interested, and the translation into a 'ChainIndexTxOut'
+      -- should fail.
+      rScr :: Maybe (Maybe (Ledger.Versioned Ledger.Script))
+      rScr = case Plutus.Contract.CardanoAPI.fromCardanoTxOutRefScript cRScr of
+        Plutus.ChainIndex.ReferenceScriptNone -> Just Nothing
+        Plutus.ChainIndex.ReferenceScriptInAnyLang sil ->
+          case Ledger.Tx.CardanoAPI.fromCardanoScriptInAnyLang sil of
+            Nothing -> Nothing
+            Just s -> Just $ Just s
+   in case addr of
+        Ledger.Address (V2Api.PubKeyCredential _) _ ->
+          Ledger.PublicKeyChainIndexTxOut
+            addr
+            val
+            ( case dat of
+                V2Api.NoOutputDatum -> Nothing
+                V2Api.OutputDatumHash dh -> Just (dh, Nothing)
+                V2Api.OutputDatum d -> Just (Ledger.datumHash d, Just d)
+            )
+            <$> rScr
+        Ledger.Address (V2Api.ScriptCredential valHash) _ ->
+          Ledger.ScriptChainIndexTxOut
+            addr
+            val
+            <$> ( case dat of
+                    V2Api.NoOutputDatum -> Nothing
+                    V2Api.OutputDatumHash dh -> Just (dh, Nothing)
+                    V2Api.OutputDatum d -> Just (Ledger.datumHash d, Just d)
+                )
+            <*> rScr
+            <*> pure (valHash, Nothing)
 
-fromTxOut :: Ledger.TxOut -> Maybe Ledger.ChainIndexTxOut
-fromTxOut = undefined -- TODO: look at (the documentation at) 'toTxInfoTxOut, which should be a left inverse of this function.
+txOutValueL :: Lens' Ledger.TxOut (Cardano.TxOutValue Cardano.BabbageEra)
+txOutValueL = lensVL Ledger.outValue'
 
--- | There's always a 'Value' in a 'TxOut', at least that's what I hope. I
--- haven't yet understood the conditions under which 'txOutValueI' fails, and if
--- they can happen in our use case.
-txOutValueL :: Lens' Ledger.TxOut Ledger.Value
-txOutValueL = wrapped % txOutValueI
-  where
-    wrapped :: Lens Ledger.TxOut Ledger.TxOut Ledger.Value (Cardano.TxOutValue Cardano.BabbageEra)
-    wrapped = lensVL Ledger.outValue
-
-txOutValueI :: Iso Ledger.Value (Cardano.TxOutValue Cardano.BabbageEra) Ledger.Value Ledger.Value
-txOutValueI =
+-- | There's always a 'Value' to be obtained from a 'TxOutValue BabbageEra'. The
+-- converse direction need not always hold. Namely, what can go wrong is
+-- 'toCardanoAssetId' throwing an error on one of the 'AssetClass'es in your
+-- provided 'Value'. This Iso is safe in both directions if you know at least
+-- one of the following conditions to hold:
+--
+-- - You're only working with pure Ada values.
+--
+-- - The function 'Cardano.Api.deserialiseFromRawBytes' fails on none of the
+--   token names and currency symbols in the values you're working with.
+txOutValueUnsafeI :: Iso' (Cardano.TxOutValue Cardano.BabbageEra) Ledger.Value
+txOutValueUnsafeI =
   iso
-    id
-    ( fromRight (error "TODO: can this happen?")
+    Ledger.Tx.CardanoAPI.fromCardanoTxOutValue
+    ( fromRight (error "Value can not be translated into 'TxOutValue BabbageEra'")
         . Ledger.Tx.CardanoAPI.toCardanoTxOutValue
     )
 
--- | Independenly of whether we have a 'PublicKeyChainIndexTxOut' or a
--- 'ScriptChainIndexTxOut', there's always at most one datum: In the former
--- case, there can be nothing, only a datum hash, or a datum hash together with
--- a datum. In the latter case, there will always be a datum hash, but not
--- always a datum.
 --
 -- If you use this as a setter, both the datum and the hash will be set, so that
 -- the hash is the one of the new datum.
@@ -209,27 +237,3 @@ ciTxOutDatumHashAF =
 
 ciTxOutDatumHash :: Ledger.ChainIndexTxOut -> Maybe Ledger.DatumHash
 ciTxOutDatumHash = (^? ciTxOutDatumHashAF)
-
-{-
-
-txOutPubKeyHashAT :: AffineTraversal' Ledger.TxOut Ledger.PubKeyHash
-txOutPubKeyHashAT = txOutAddressL % addressPubKeyHashP
-
-txOutAddressL :: Lens' Ledger.TxOut Ledger.Address
-txOutAddressL = wrapped % addressInEraI
-  where
-    wrapped :: Lens Ledger.TxOut Ledger.TxOut Ledger.Address (Cardano.AddressInEra Cardano.BabbageEra)
-    wrapped = lensVL Ledger.outAddress
-
-addressInEraI :: Iso Ledger.Address (Cardano.AddressInEra Cardano.BabbageEra) Ledger.Address Ledger.Address
-addressInEraI = iso id undefined -- We could do soemthing like in 'txOutValueI', but that does not seem right, now that it's becoming a pattern.
-
--- | The "constructing" direction of this prism sets the staking credential to
--- 'Nothing'.
-addressPubKeyHashP :: Prism' Ledger.Address Ledger.PubKeyHash
-addressPubKeyHashP =
-  prism
-    (flip Ledger.pubKeyHashAddress Nothing . Ledger.PaymentPubKeyHash) -- TODO is there a more natural way to do this?
-    (\addr -> maybe (Left addr) Right (Ledger.toPubKeyHash addr))
-
--}

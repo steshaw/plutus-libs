@@ -111,7 +111,7 @@ validateTxConstrLbl lbl = validateTxSkel . txSkelLbl lbl
 spendableRef :: (MonadBlockChain m) => Pl.TxOutRef -> m SpendableOut
 spendableRef txORef = do
   Just txOut <- txOutByRef txORef
-  return (txORef, fromJust (Pl.fromTxOut txOut))
+  return (txORef, fromJust (Pl.ciTxOutFromTxOut txOut))
 
 -- | Some values of type "SpendableOut" have no explicit datum in their
 -- "ChainIndexTxOut" but the datum hash instead. When used in cooked
@@ -150,7 +150,7 @@ spOutResolveDatum spOut = return spOut
 spOutsFromCardanoTx :: MonadBlockChain m => Pl.CardanoTx -> m [SpendableOut]
 spOutsFromCardanoTx cardanoTx = forM (Pl.getCardanoTxOutRefs cardanoTx) $
   \(txOut, txOutRef) ->
-    case Pl.fromTxOut txOut of
+    case Pl.ciTxOutFromTxOut txOut of
       Just chainIndexTxOut -> spOutResolveDatum (txOutRef, chainIndexTxOut)
       Nothing -> fail "could not extract ChainIndexTxOut"
 

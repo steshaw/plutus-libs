@@ -654,7 +654,8 @@ applyBalanceTx utxoPolicy w (BalanceTxRes newTxIns leftover remainders) tx = do
       let (pref, out : rest) = L.splitAt i xs
           val = Pl.txOutValue out
           val' = f val
-       in guard (isAtLeastMinAda val') >> return (pref ++ (out & Pl.txOutValueL .~ val') : rest)
+       in -- TODO argue why the txOutValueUnsafeI is not unsafe here.
+          guard (isAtLeastMinAda val') >> return (pref ++ (out & Pl.txOutValueL % Pl.txOutValueUnsafeI .~ val') : rest)
 
     -- Given a list of available utxos; attept to consume them if they would enable the returning
     -- of the leftover.
