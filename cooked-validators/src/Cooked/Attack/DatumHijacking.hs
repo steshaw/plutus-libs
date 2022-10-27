@@ -12,12 +12,9 @@ module Cooked.Attack.DatumHijacking where
 
 import Cooked.Attack.Tweak
 import Cooked.MockChain.RawUPLC
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints
-import qualified Ledger as L
-import qualified Ledger.Typed.Scripts as L
 import Optics.Core
-import qualified Plutus.V1.Ledger.Credential as L
-import qualified PlutusTx as Pl
 
 -- | Redirect 'PaysScript's from one validator to another validator of the same
 -- type. Returns the list of outputs it redirected (as they were before the
@@ -30,17 +27,17 @@ import qualified PlutusTx as Pl
 -- optics used by this tweak.
 redirectScriptOutputTweak ::
   Is k A_Traversal =>
-  Optic' k is TxSkel (L.TypedValidator a, Maybe L.StakingCredential, L.DatumType a, L.Value) ->
+  Optic' k is TxSkel (Pl.TypedValidator a, Maybe Pl.StakingCredential, Pl.DatumType a, Pl.Value) ->
   -- | Return @Just@ the new validator, or @Nothing@ if you want to leave this
   -- output unchanged.
-  (L.TypedValidator a -> Maybe L.StakingCredential -> L.DatumType a -> L.Value -> Maybe (L.TypedValidator a)) ->
+  (Pl.TypedValidator a -> Maybe Pl.StakingCredential -> Pl.DatumType a -> Pl.Value -> Maybe (Pl.TypedValidator a)) ->
   -- | The redirection described by the previous argument might apply to more
   -- than one of the script outputs of the transaction. Use this predicate to
   -- select which of the redirectable script outputs to actually redirect. We
   -- count the redirectable script outputs from the left to the right, starting
   -- with zero.
   (Integer -> Bool) ->
-  Tweak [(L.TypedValidator a, Maybe L.StakingCredential, L.DatumType a, L.Value)]
+  Tweak [(Pl.TypedValidator a, Maybe Pl.StakingCredential, Pl.DatumType a, Pl.Value)]
 redirectScriptOutputTweak optic change =
   mkSelectTweak
     optic
@@ -69,12 +66,12 @@ datumHijackingAttack ::
   PaysScriptConstrs a =>
   -- | Predicate to select outputs to steal, depending on the intended
   -- recipient, the datum, and the value.
-  (L.TypedValidator a -> L.DatumType a -> L.Value -> Bool) ->
+  (Pl.TypedValidator a -> Pl.DatumType a -> Pl.Value -> Bool) ->
   -- | The selection predicate may match more than one output, restrict to the
   -- i-th of the output(s) (counting from the left, starting at zero) chosen by
   -- the selection predicate with this predicate.
   (Integer -> Bool) ->
-  Tweak [(L.TypedValidator a, Maybe L.StakingCredential, L.DatumType a, L.Value)]
+  Tweak [(Pl.TypedValidator a, Maybe Pl.StakingCredential, Pl.DatumType a, Pl.Value)]
 datumHijackingAttack change select =
   let thief = datumHijackingTarget @a
    in do
@@ -83,16 +80,16 @@ datumHijackingAttack change select =
             (paysScriptConstraintsT % paysScriptConstraintTypeP @a)
             (\val _mStakingCred dat money -> if change val dat money then Just thief else Nothing)
             select
-        addLabelTweak $ DatumHijackingLbl $ L.validatorAddress thief
+        addLabelTweak $ DatumHijackingLbl $ Pl.validatorAddress thief
         return redirected
 
-newtype DatumHijackingLbl = DatumHijackingLbl L.Address
+newtype DatumHijackingLbl = DatumHijackingLbl Pl.Address
   deriving (Show, Eq)
 
 -- | The trivial validator that always succeds; this is a sufficient target for
 -- the datum hijacking attack since we only want to show feasibility of the
 -- attack.
-datumHijackingTarget :: L.TypedValidator a
+datumHijackingTarget :: Pl.TypedValidator a
 datumHijackingTarget = unsafeTypedValidatorFromUPLC (Pl.getPlc $$(Pl.compile [||tgt||]))
   where
     tgt :: Pl.BuiltinData -> Pl.BuiltinData -> Pl.BuiltinData -> ()

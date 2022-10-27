@@ -11,15 +11,12 @@
 module Cooked.Attack.Tweak.AddConstraints where
 
 import Cooked.Attack.Tweak.Common
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints.Optics
 import Cooked.Tx.Constraints.Type
 import Data.List
 import Data.Maybe
-import qualified Ledger as L
-import qualified Ledger.Typed.Scripts as L
 import Optics.Core
-import qualified Plutus.V1.Ledger.Interval as Pl
-import qualified PlutusTx.Prelude as Pl
 
 -- | Add constraints to a transaction. This tweak uses
 -- 'addMiscConstraintsTweak' to add 'MiscConstraint's in a conflict-avoiding
@@ -125,8 +122,8 @@ partitionMaybe p l = accumulate l [] []
 addSpendsScriptTweak ::
   forall a.
   SpendsConstrs a =>
-  L.TypedValidator a ->
-  L.RedeemerType a ->
+  Pl.TypedValidator a ->
+  Pl.RedeemerType a ->
   SpendableOut ->
   Tweak (Maybe MiscConstraint)
 addSpendsScriptTweak v r o = do
@@ -171,8 +168,8 @@ addSpendsPKTweak extraUtxo = do
 addMintsTweak ::
   MintsConstrs a =>
   Maybe a ->
-  [L.MintingPolicy] ->
-  L.Value ->
+  [Pl.Versioned Pl.MintingPolicy] ->
+  Pl.Value ->
   Tweak (Maybe MiscConstraint)
 addMintsTweak r ps x =
   let newConstraint = Mints r ps x
@@ -184,7 +181,7 @@ addMintsTweak r ps x =
 -- 'ValidateIn') from a transaction.
 --
 -- Returns the validity time range of the unmodified transaction.
-removeTimeConstraintsTweak :: Tweak L.POSIXTimeRange
+removeTimeConstraintsTweak :: Tweak Pl.POSIXTimeRange
 removeTimeConstraintsTweak = do
   timeRanges <- removeMiscConstraintsTweak toTimeRange
   return $ foldr Pl.intersection Pl.always timeRanges
@@ -204,7 +201,7 @@ removeTimeConstraintsTweak = do
 --
 -- This tweak returns @Just@ the added constraint iff the transaction was
 -- modified.
-addValidateInTweak :: L.POSIXTimeRange -> Tweak (Maybe MiscConstraint)
+addValidateInTweak :: Pl.POSIXTimeRange -> Tweak (Maybe MiscConstraint)
 addValidateInTweak range = do
   unmodifiedSkel <- getTxSkel
   oldRange <- removeTimeConstraintsTweak
@@ -221,7 +218,7 @@ addValidateInTweak range = do
 
 -- | This tweak removes all 'SignedBy' constraints from a transaction. It
 -- returns a list of the signers it removed.
-removeSignedByTweak :: Tweak [L.PubKeyHash]
+removeSignedByTweak :: Tweak [Pl.PubKeyHash]
 removeSignedByTweak = do
   signers <- removeMiscConstraintsTweak (\case SignedBy s -> Just s; _ -> Nothing)
   return $ concat signers
@@ -231,7 +228,7 @@ removeSignedByTweak = do
 --
 -- This tweak returns @Just@ the added constraint iff the transaction was
 -- modified.
-addSignedByTweak :: [L.PubKeyHash] -> Tweak (Maybe MiscConstraint)
+addSignedByTweak :: [Pl.PubKeyHash] -> Tweak (Maybe MiscConstraint)
 addSignedByTweak signers = do
   unmodifiedSkel <- getTxSkel
   oldSigners <- removeSignedByTweak

@@ -13,6 +13,7 @@ module Cooked.BalanceSpec (tests) where
 import Control.Monad.Identity
 import Control.Monad.State
 import Cooked.MockChain
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Balance
 import Cooked.Tx.Constraints
 import qualified Data.ByteString.Char8 as BS
@@ -22,19 +23,9 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Maybe (mapMaybe)
 import Data.String
-import qualified Ledger.Ada as Pl
-import qualified Ledger.Crypto as Pl
-import qualified Ledger.Index as Pl
-import qualified Ledger.Value as Pl
-import qualified Plutus.V1.Ledger.Api as Pl
-import qualified Plutus.V1.Ledger.Crypto as Pl
-import qualified Plutus.V1.Ledger.Tx as Pl
-import qualified PlutusTx.AssocMap as Map
-import qualified PlutusTx.Builtins.Internal as PlI
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
-import qualified Wallet.Emulator.Wallet as Pl
 
 -- Instead of relying on Plutus TxOut and TxOutRef, we mock our own
 -- version of it for testing, this way we can generate aribtrary values.
