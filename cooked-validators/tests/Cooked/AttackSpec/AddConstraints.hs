@@ -11,15 +11,10 @@ module Cooked.AttackSpec.AddConstraints (tests) where
 import Cooked.Attack.Tweak.AddConstraints
 import Cooked.Attack.Tweak.Common
 import Cooked.MockChain
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.TestUtils
 import Cooked.Tx.Constraints
 import Data.Default
-import qualified Ledger.Typed.Scripts as L
-import qualified Plutus.V1.Ledger.Ada as L
-import qualified Plutus.V1.Ledger.Contexts as L
-import qualified Plutus.V1.Ledger.Interval as Pl
-import qualified PlutusTx as Pl
-import qualified PlutusTx.Prelude as Pl
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -35,21 +30,21 @@ Pl.unstableMakeIsData ''Redeemer
 
 data Contract
 
-instance L.ValidatorTypes Contract where
+instance Pl.ValidatorTypes Contract where
   type DatumType Contract = ()
   type RedeemerType Contract = Redeemer
 
 {-# INLINEABLE mkValidator #-}
-mkValidator :: () -> Redeemer -> L.ScriptContext -> Bool
+mkValidator :: () -> Redeemer -> Pl.ScriptContext -> Bool
 mkValidator _ _ _ = True
 
-validator :: L.TypedValidator Contract
+validator :: Pl.TypedValidator Contract
 validator =
-  L.mkTypedValidator @Contract
+  Pl.mkTypedValidator @Contract
     $$(Pl.compile [||mkValidator||])
     $$(Pl.compile [||wrap||])
   where
-    wrap = L.mkUntypedValidator @() @Redeemer
+    wrap = Pl.mkUntypedValidator @() @Redeemer
 
 -- | In the initial state of the Mockchain, validator owns a few UTxOs, with
 -- different values
@@ -59,8 +54,8 @@ testMockChainSt = case runMockChainRaw def def setup of
   Right (_, mcst) -> mcst
   where
     setup = do
-      validateTxSkel $ txSkel [paysScript validator () (L.lovelaceValueOf 2_000_000)]
-      validateTxSkel $ txSkel [paysScript validator () (L.lovelaceValueOf 3_000_000)]
+      validateTxSkel $ txSkel [paysScript validator () (Pl.lovelaceValueOf 2_000_000)]
+      validateTxSkel $ txSkel [paysScript validator () (Pl.lovelaceValueOf 3_000_000)]
 
 assertTxSameConstraints :: TxSkel -> TxSkel -> Assertion
 assertTxSameConstraints (TxSkel _ _ actual) (TxSkel _ _ expected) =
@@ -73,7 +68,7 @@ tests =
     [ testGroup
         "addConstraintsTweak"
         [ testCase "'OutConstraints' are always added" $
-            let oneOut = toConstraints $ paysPK (walletPKHash $ wallet 1) $ L.lovelaceValueOf 123
+            let oneOut = toConstraints $ paysPK (walletPKHash $ wallet 1) $ Pl.lovelaceValueOf 123
              in case getTweak (addConstraintsTweak oneOut) def (txSkel oneOut) of
                   [(skelOut, x)] -> assertTxSameConstraints skelOut (txSkel $ oneOut <> oneOut) .&&. (x @?= oneOut)
                   _ -> assertFailure "not the right number of tweak outputs",

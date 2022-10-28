@@ -157,8 +157,9 @@ instance Arbitrary Pl.CurrencySymbol where
 instance Arbitrary Pl.TokenName where
   arbitrary = Pl.TokenName <$> elements (strings 5)
 
-instance (Arbitrary k, Arbitrary v) => Arbitrary (Map.Map k v) where
-  arbitrary = Map.fromList <$> arbitrary
+-- This seems already to be declared. Do the details of this definition matter? TODO
+-- instance (Arbitrary k, Arbitrary v) => Arbitrary (M.Map k v) where
+--   arbitrary = M.fromList <$> arbitrary
 
 class ArbitraryMod (cntMod :: Type -> Type) where
   unwrap :: cntMod a -> a
@@ -212,7 +213,7 @@ allUtxosCurrsToks :: [MockBalancable] -> [(Pl.CurrencySymbol, Pl.TokenName)]
 allUtxosCurrsToks bs = [(curr, tok) | (curr, tok, _) <- Pl.flattenValue $ foldMap mbValue bs]
 
 strings :: Int -> [Pl.BuiltinByteString]
-strings m = [PlI.BuiltinByteString $ BS.singleton c | c <- take m ['a' ..]]
+strings m = [Pl.BuiltinByteString $ BS.singleton c | c <- take m ['a' ..]]
 
 unflattenValue :: [(Pl.CurrencySymbol, Pl.TokenName, Integer)] -> Pl.Value
 unflattenValue = mconcat . map (\(s, t, i) -> Pl.singleton s t i)

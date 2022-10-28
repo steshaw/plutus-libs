@@ -3,12 +3,10 @@
 module Cooked.OutputReorderingSpec (tests) where
 
 import Cooked.MockChain
+import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints
 import Data.Default
 import Data.Either.Combinators (rightToMaybe)
-import qualified Ledger as Pl
-import qualified Ledger.Ada as Pl
-import qualified Ledger.Credential as Pl
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -47,7 +45,7 @@ skel w1 w2 =
 firstRecipientsAre :: Wallet -> Wallet -> Pl.Tx -> Bool
 firstRecipientsAre w1 w2 tx =
   case Pl.txOutputs tx of
-    (Pl.TxOut (Pl.Address (Pl.PubKeyCredential pkh1) _) _ _)
-      : (Pl.TxOut (Pl.Address (Pl.PubKeyCredential pkh2) _) _ _)
-      : _ -> walletPKHash w1 == pkh1 && walletPKHash w2 == pkh2
+    out1 : out2 : _ ->
+      walletAddress w1 == Pl.txOutAddress out1
+        && walletAddress w2 == Pl.txOutAddress out2
     _ -> False

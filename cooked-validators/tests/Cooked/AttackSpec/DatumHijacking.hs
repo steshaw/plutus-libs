@@ -82,14 +82,14 @@ txRelock v = do
 
 -- | Try to extract a datum from an output.
 {-# INLINEABLE outputDatum #-}
-outputDatum :: Pl.TxInfo -> Pl.TxOut -> Maybe MockDatum
+outputDatum :: Pl.TxInfo -> Pl.PlutusLedgerTxOut -> Maybe MockDatum
 outputDatum txi o = do
-  h <- Pl.txOutDatum o
+  h <- Pl.plutusLedgerTxOutDatumHash o
   Pl.Datum d <- Pl.findDatum h txi
   Pl.fromBuiltinData d
 
 {-# INLINEABLE mkMockValidator #-}
-mkMockValidator :: (Pl.ScriptContext -> [Pl.TxOut]) -> MockDatum -> () -> Pl.ScriptContext -> Bool
+mkMockValidator :: (Pl.ScriptContext -> [Pl.PlutusLedgerTxOut]) -> MockDatum -> () -> Pl.ScriptContext -> Bool
 mkMockValidator getOutputs datum _ ctx =
   let txi = Pl.scriptContextTxInfo ctx
    in case datum of
@@ -101,7 +101,7 @@ mkMockValidator getOutputs datum _ ctx =
                 (outputDatum txi o Pl.== Just SecondLock)
                 && Pl.traceIfFalse
                   "not re-locking the right amout"
-                  (Pl.txOutValue o == lockValue)
+                  (Pl.plutusLedgerTxOutValue o == lockValue)
             _ -> Pl.trace "there must be a output re-locked" False
         SecondLock -> False
 

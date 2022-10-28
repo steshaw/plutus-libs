@@ -7,10 +7,10 @@ module Cooked.AttackSpec.OutPermutations (tests) where
 import Cooked.Attack
 import Cooked.MockChain
 import Cooked.MockChain.Testing
+import qualified Cooked.PlutusWrappers as L
 import Cooked.TestUtils
 import Cooked.Tx.Constraints
 import Data.Default
-import qualified Plutus.V1.Ledger.Ada as L
 import Test.Tasty
 import Test.Tasty.HUnit
 

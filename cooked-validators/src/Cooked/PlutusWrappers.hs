@@ -20,6 +20,9 @@ module Cooked.PlutusWrappers
     txOutValueUnsafeI,
     asV2Script,
     singletonConstraint,
+    PlutusLedgerTxOut,
+    plutusLedgerTxOutDatumHash,
+    plutusLedgerTxOutValue,
     -- re-exports
     (PlutusTx.Numeric.-),
     (PlutusTx.Prelude.==),
@@ -121,6 +124,7 @@ module Cooked.PlutusWrappers
     Plutus.V1.Ledger.Value.adaToken,
     Plutus.V1.Ledger.Value.assetClass,
     Plutus.V1.Ledger.Value.assetClassValue,
+    Plutus.V1.Ledger.Value.assetClassValueOf,
     Plutus.V1.Ledger.Value.flattenValue,
     Plutus.V1.Ledger.Value.geq,
     Plutus.V1.Ledger.Value.leq,
@@ -145,11 +149,18 @@ module Cooked.PlutusWrappers
     Scripts.TypedValidator,
     Scripts.ValidatorTypes (..),
     Scripts.mkUntypedMintingPolicy,
+    Scripts.mkTypedValidator,
+    Scripts.mkUntypedValidator,
     Scripts.validatorAddress,
     Scripts.validatorHash,
     Scripts.validatorScript,
     V2Api.Credential (..),
     V2Api.OutputDatum (..),
+    Ledger.Ada.toValue,
+    Ledger.Ada.fromValue,
+    Ledger.interval,
+    Ledger.getContinuingOutputs,
+    PlutusTx.Builtins.Internal.BuiltinByteString (..),
   )
 where
 
@@ -168,9 +179,11 @@ import qualified Ledger.Value
 import Optics.Core
 import qualified Plutus.ChainIndex
 import qualified Plutus.Contract.CardanoAPI
+import qualified Plutus.V1.Ledger.Tx
 import qualified Plutus.V1.Ledger.Value
 import qualified Plutus.V2.Ledger.Api as V2Api
 import qualified PlutusTx
+import qualified PlutusTx.Builtins.Internal
 import qualified PlutusTx.Numeric
 import qualified PlutusTx.Prelude
 
@@ -185,6 +198,20 @@ lovelacesIn :: Ledger.Value -> Integer
 lovelacesIn v = Ledger.Value.valueOf v Ledger.Ada.adaSymbol Ledger.Ada.adaToken
 
 -- * Working with 'TxOut's
+
+-- This seems ugly to me. The types from Plutus.V1.Ledger.Tx are the ones that
+-- on-chain functions use. Maybe we should have a hierarchy of PlutusWrappers
+-- modules, to reflect such differences.
+type PlutusLedgerTxOut = Plutus.V1.Ledger.Tx.TxOut
+
+-- it's interesting to me that I can give these type signatures to the next two
+-- functions, crossing the supposed abstraction barrier between Plutus.V1.Ledger
+-- and Ledger.
+plutusLedgerTxOutDatumHash :: PlutusLedgerTxOut -> Maybe Ledger.DatumHash
+plutusLedgerTxOutDatumHash = Plutus.V1.Ledger.Tx.txOutDatumHash
+
+plutusLedgerTxOutValue :: PlutusLedgerTxOut -> Ledger.Value
+plutusLedgerTxOutValue = Plutus.V1.Ledger.Tx.txOutValue
 
 -- | A smart constructor for Babbage era 'TxOut's.
 babbageTxOut ::

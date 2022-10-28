@@ -418,6 +418,9 @@ utxosSuchThat' addr = utxosSuchThisAndThat' (== addr)
 --     Left err -> error (show err)
 --     Right (_, res) -> res
 
+generateTx' :: (Monad m) => TxSkel -> MockChainT m ([Pl.PaymentPubKeyHash], Pl.Tx)
+generateTx' = undefined
+
 -- -- | Check 'generateTx' for details
 -- generateTx' :: (Monad m) => TxSkel -> MockChainT m ([Pl.PaymentPubKeyHash], Pl.Tx)
 -- generateTx' skel@(TxSkel _ _ constraintsSpec) = do
