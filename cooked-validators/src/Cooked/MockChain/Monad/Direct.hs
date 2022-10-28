@@ -214,13 +214,11 @@ utxoIndex0 = utxoIndex0From def
 -- ** Direct Interpretation of Operations
 
 instance (Monad m) => MonadBlockChain (MockChainT m) where
-  validateTxSkel skel = undefined
-
-  -- do
-  -- (reqSigs, tx) <- generateTx' skel
-  -- _ <- validateTx' reqSigs tx
-  -- when (autoSlotIncrease $ txOpts skel) $ modify' (\st -> st {mcstCurrentSlot = mcstCurrentSlot st + 1})
-  -- return (Pl.EmulatorTx tx)
+  validateTxSkel skel = do
+    (reqSigs, tx) <- generateTx' skel
+    _ <- validateTx' reqSigs tx
+    when (autoSlotIncrease $ txOpts skel) $ modify' (\st -> st {mcstCurrentSlot = mcstCurrentSlot st + 1})
+    return (Pl.EmulatorTx tx)
 
   txOutByRef outref = gets (M.lookup outref . Pl.getIndex . mcstIndex)
 
@@ -308,6 +306,9 @@ instance (Monad m) => MonadMockChain (MockChainT m) where
 --         Just (Pl.Phase2, _) -> Pl.insertCollateral (Pl.EmulatorTx tx) ix
 --         Nothing -> Pl.insert (Pl.EmulatorTx tx) ix
 --    in (idx', e, evs)
+
+validateTx' :: (Monad m) => [Pl.PaymentPubKeyHash] -> Pl.Tx -> MockChainT m Pl.TxId
+validateTx' = undefined
 
 -- -- | Check 'validateTx' for details; we pass the list of required signatories since
 -- -- that is only truly available from the unbalanced tx, so we bubble that up all the way here.

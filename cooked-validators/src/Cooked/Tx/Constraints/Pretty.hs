@@ -115,8 +115,6 @@ prettyChainIndexTxOut tout =
     mPrettyValue $ view Pl.ciTxOutValue tout
   )
 
--- undefined -- (prettyAddressTypeAndHash $ Pl.txOutAddress tout, mPrettyValue $ Pl.txOutValue tout)
-
 prettyTypedValidator :: Pl.TypedValidator a -> Doc ann
 prettyTypedValidator = prettyAddressTypeAndHash . Pl.validatorAddress
 

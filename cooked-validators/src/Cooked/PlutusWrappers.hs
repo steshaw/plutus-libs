@@ -8,26 +8,28 @@
 -- assumptions.
 module Cooked.PlutusWrappers
   ( -- our own wrappers
+    PlutusLedgerTxOut,
+    asV2Script,
+    babbageTxOut,
     ciTxOutDatum,
     ciTxOutDatumAT,
     ciTxOutDatumHash,
     ciTxOutDatumHashAF,
     ciTxOutFromTxOut,
-    minAdaValue,
-    txOutValueL,
-    babbageTxOut,
     lovelacesIn,
-    txOutValueUnsafeI,
-    asV2Script,
-    singletonConstraint,
-    PlutusLedgerTxOut,
+    minAdaValue,
     plutusLedgerTxOutDatumHash,
     plutusLedgerTxOutValue,
+    singletonConstraint,
+    txOutValueL,
+    txOutValueUnsafeI,
     -- re-exports
     (PlutusTx.Numeric.-),
     (PlutusTx.Prelude.==),
     Cardano.ReferenceScript (..),
+    Ledger.Ada.fromValue,
     Ledger.Ada.lovelaceValueOf,
+    Ledger.Ada.toValue,
     Ledger.Address (..),
     Ledger.AssetClass,
     Ledger.CardanoTx (..),
@@ -104,15 +106,18 @@ module Cooked.PlutusWrappers
     Ledger.from,
     Ledger.fromMilliSeconds,
     Ledger.getCardanoTxOutRefs,
+    Ledger.getContinuingOutputs,
     Ledger.getIndex,
     Ledger.increaseTransactionLimits,
     Ledger.initialise,
     Ledger.intersection,
+    Ledger.interval,
     Ledger.mkMintingPolicyScript,
     Ledger.ownCurrencySymbol,
     Ledger.pubKeyHash,
     Ledger.scriptCurrencySymbol,
     Ledger.to,
+    Ledger.toPublicKey,
     Ledger.toTxInfoTxOut,
     Ledger.toTxOut,
     Ledger.txOutAddress,
@@ -132,6 +137,7 @@ module Cooked.PlutusWrappers
     Plutus.V1.Ledger.Value.tokenName,
     Plutus.V1.Ledger.Value.valueOf,
     PlutusTx.BuiltinData,
+    PlutusTx.Builtins.Internal.BuiltinByteString (..),
     PlutusTx.FromData,
     PlutusTx.Numeric.negate,
     PlutusTx.Prelude.Eq,
@@ -148,19 +154,15 @@ module Cooked.PlutusWrappers
     Scripts.Language (..),
     Scripts.TypedValidator,
     Scripts.ValidatorTypes (..),
-    Scripts.mkUntypedMintingPolicy,
     Scripts.mkTypedValidator,
+    Scripts.mkUntypedMintingPolicy,
     Scripts.mkUntypedValidator,
     Scripts.validatorAddress,
     Scripts.validatorHash,
     Scripts.validatorScript,
     V2Api.Credential (..),
     V2Api.OutputDatum (..),
-    Ledger.Ada.toValue,
-    Ledger.Ada.fromValue,
-    Ledger.interval,
-    Ledger.getContinuingOutputs,
-    PlutusTx.Builtins.Internal.BuiltinByteString (..),
+    Wallet.Emulator.XPrv,
   )
 where
 
@@ -186,6 +188,7 @@ import qualified PlutusTx
 import qualified PlutusTx.Builtins.Internal
 import qualified PlutusTx.Numeric
 import qualified PlutusTx.Prelude
+import qualified Wallet.Emulator
 
 -- * Some easy definitions
 

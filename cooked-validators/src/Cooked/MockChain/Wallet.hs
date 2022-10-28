@@ -6,14 +6,13 @@
 module Cooked.MockChain.Wallet where
 
 import qualified Cardano.Api as C
-import qualified Cardano.Crypto.Wallet as CWCrypto
 import Control.Arrow
 import qualified Cooked.PlutusWrappers as Pl
 import Data.Default
+import Data.Either.Combinators
 import Data.Function (on)
 import qualified Data.Map.Strict as M
 import Data.Maybe
-import qualified Ledger.Crypto as Crypto
 import Unsafe.Coerce
 
 -- * MockChain Wallets
@@ -26,7 +25,7 @@ import Unsafe.Coerce
 
 type Wallet = Pl.MockWallet
 
-type PrivateKey = CWCrypto.XPrv
+type PrivateKey = Pl.XPrv
 
 instance Eq Wallet where
   (==) = (==) `on` Pl.mwWalletId
@@ -51,13 +50,13 @@ walletPK :: Wallet -> Pl.PubKey
 walletPK = Pl.unPaymentPubKey . Pl.paymentPubKey
 
 walletStakingPK :: Wallet -> Maybe Pl.PubKey
-walletStakingPK = fmap Crypto.toPublicKey . walletStakingSK
+walletStakingPK = fmap Pl.toPublicKey . walletStakingSK
 
 walletPKHash :: Wallet -> Pl.PubKeyHash
 walletPKHash = Pl.pubKeyHash . walletPK
 
 walletStakingPKHash :: Wallet -> Maybe Pl.PubKeyHash
-walletStakingPKHash = fmap Crypto.pubKeyHash . walletStakingPK
+walletStakingPKHash = fmap Pl.pubKeyHash . walletStakingPK
 
 walletAddress :: Wallet -> Pl.Address
 walletAddress w =
@@ -72,14 +71,14 @@ walletSK = Pl.unPaymentPrivateKey . Pl.paymentPrivateKey
 -- the constructor and accessor to MockPrivateKey are not exported. Hence,
 -- we make an isomorphic datatype, unsafeCoerce to this datatype then extract
 -- whatever we need from it.
-newtype HACK = HACK {please :: CWCrypto.XPrv}
+newtype HACK = HACK {please :: Pl.XPrv}
 
 -- | Don't use this; its a hack and will be deprecated once we have time
 --  to make a PR into plutus exporting the things we need. If you use this anyway,
 --  make sure that you only apply it to @MockPrivateKey@; the function is polymorphic
 --  because @MockPrivateKey@ is not exported either; having a dedicated function makes
 --  it easy to test that this works: check the @Cooked.MockChain.WalletSpec@ test module.
-hackUnMockPrivateKey :: a -> CWCrypto.XPrv
+hackUnMockPrivateKey :: a -> Pl.XPrv
 hackUnMockPrivateKey = please . unsafeCoerce
 
 walletStakingSK :: Wallet -> Maybe PrivateKey
@@ -92,9 +91,6 @@ toPKHMap ws = M.fromList [(walletPKHash w, w) | w <- ws]
 
 txAddSignature :: Wallet -> Pl.Tx -> Pl.Tx
 txAddSignature w = Pl.addSignature' (walletSK w)
-
-txAddSignatureAPI :: Wallet -> C.Tx C.AlonzoEra -> C.Tx C.AlonzoEra
-txAddSignatureAPI w = undefined --Validation.addSignature (walletSK w) -- TODO is there a reason why we should use Alonzo vs. Babbage?
 
 -- * Initial distribution of funds
 
@@ -164,9 +160,7 @@ initialDistribution' :: [(Wallet, [Pl.Value])] -> InitialDistribution
 initialDistribution' = (def <>) . distributionFromList
 
 initialTxFor :: InitialDistribution -> Pl.Tx
-initialTxFor = undefined
-
-{- initialTxFor initDist
+initialTxFor initDist
   | not $ validInitialDistribution initDist =
     error "Not all UTxOs have at least minAda; this initial distribution is unusable"
   | otherwise =
@@ -175,9 +169,10 @@ initialTxFor = undefined
         Pl.txOutputs = concatMap (\(w, vs) -> map (initUtxosFor w) vs) initDist'
       }
   where
-    initUtxosFor w v = Pl.TxOut (walletAddress w) v Nothing
-
-    initDist' = M.toList $ distribution initDist -}
+    initUtxosFor w v =
+      fromRight' $ -- can this ever fail? TODO
+        Pl.babbageTxOut (walletAddress w) v Pl.NoOutputDatum Pl.ReferenceScriptNone
+    initDist' = M.toList $ distribution initDist
 
 valuesForWallet :: InitialDistribution -> Wallet -> [Pl.Value]
 valuesForWallet d w = fromMaybe [] $ w `M.lookup` distribution d

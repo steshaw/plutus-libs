@@ -26,7 +26,6 @@ import qualified Ledger.Interval as Interval
 import Ledger.Scripts as Pl
 import Ledger.Typed.Scripts as Scripts
 import qualified Ledger.Value as Value
-import qualified Plutus.Script.Utils.V1.Scripts as Pl (scriptCurrencySymbol)
 import qualified Plutus.V1.Ledger.Api as Api
 import qualified PlutusTx
 import PlutusTx.Prelude

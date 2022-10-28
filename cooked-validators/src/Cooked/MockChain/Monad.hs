@@ -21,6 +21,7 @@ import Cooked.MockChain.UtxoPredicate
 import Cooked.MockChain.Wallet
 import qualified Cooked.PlutusWrappers as Pl
 import Cooked.Tx.Constraints
+import Data.Either.Combinators
 import Data.Function (on)
 import Data.Kind
 import qualified Data.List.NonEmpty as NE
@@ -217,12 +218,12 @@ pkUtxos pkh = pkUtxosSuchThatValue pkh (const True)
 -- | Return all UTxOs belonging to a pubkey, but keep them as 'Pl.TxOut'. This is
 --  for internal use.
 pkUtxos' :: (MonadBlockChain m) => Pl.PubKeyHash -> m [(Pl.TxOutRef, Pl.TxOut)]
-pkUtxos' pkh = undefined
-
--- map (second go) <$> pkUtxos pkh
--- where
---   go (Pl.PublicKeyChainIndexTxOut addr val _ _) = Pl.TxOut addr val Nothing
---   go _ = error "pkUtxos must return only Pl.PublicKeyChainIndexTxOut's"
+pkUtxos' pkh = map (second go) <$> pkUtxos pkh
+  where
+    go (Pl.PublicKeyChainIndexTxOut addr val _ _) =
+      fromRight' $ -- This can not fail
+        Pl.babbageTxOut addr val Pl.NoOutputDatum Pl.ReferenceScriptNone
+    go _ = error "pkUtxos must return only Pl.PublicKeyChainIndexTxOut's"
 
 -- ** Slot and Time Management
 
