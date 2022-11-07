@@ -119,7 +119,7 @@ instance MonadPlus m => MonadPlus (MockChainT m) where
   mplus = combineMockChainT mplus
 
 instance InterpLtl UntypedTweak MockChainBuiltin InterpMockChain where
-  interpBuiltin (ValidateTxSkel skel) =
+  interpBuiltin (ValidateTxSkel p skel) =
     get
       >>= msum
         . map (uncurry interpretAndTell)

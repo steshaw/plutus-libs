@@ -186,21 +186,21 @@ tests =
          in [ testCase "no modified transactions if no interesting outputs to steal" $ [] @=? skelOut mempty (const True),
               testCase "one modified transaction for one interesting output" $
                 [ ( skelExpected thief val1,
-                    [(val1, Nothing, SecondLock, x3)]
+                    [(val1, SecondLock, x3)]
                   )
                 ]
                   @=? skelOut x2 (0 ==),
               testCase "two modified transactions for two interesting outputs" $
                 [ ( skelExpected thief thief,
-                    [ (val1, Nothing, SecondLock, x3),
-                      (val1, Nothing, SecondLock, x2)
+                    [ (val1, SecondLock, x3),
+                      (val1, SecondLock, x2)
                     ]
                   )
                 ]
                   @=? skelOut x2 (const True),
               testCase "select second interesting output to get one modified transaction" $
                 [ ( skelExpected val1 thief,
-                    [(val1, Nothing, SecondLock, x2)]
+                    [(val1, SecondLock, x2)]
                   )
                 ]
                   @=? skelOut x2 (1 ==)

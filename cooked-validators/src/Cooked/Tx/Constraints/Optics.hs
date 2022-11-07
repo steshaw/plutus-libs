@@ -211,7 +211,7 @@ paysScriptConstraintsT = outConstraintT % paysScriptConstraintP
 paysScriptConstraintTypeP ::
   forall a.
   PaysScriptConstrs a =>
-  Prism' PaysScriptConstraint (L.TypedValidator a, Maybe L.StakingCredential, L.DatumType a, L.Value)
+  Prism' PaysScriptConstraint (L.TypedValidator a, L.DatumType a, L.Value)
 paysScriptConstraintTypeP =
   prism'
     (\(v, d, x) -> PaysScriptConstraint v d x)

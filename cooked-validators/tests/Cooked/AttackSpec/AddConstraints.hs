@@ -15,7 +15,7 @@ import Cooked.TestUtils
 import Cooked.Tx.Constraints
 import Data.Default
 import qualified Ledger.Typed.Scripts as L
-import qualified Plutus.V1.Ledger.Ada as L
+import qualified Ledger.Ada as L
 import qualified Plutus.V1.Ledger.Contexts as L
 import qualified Plutus.V1.Ledger.Interval as Pl
 import qualified PlutusTx as Pl
@@ -59,8 +59,8 @@ testMockChainSt = case runMockChainRaw def def setup of
   Right (_, mcst) -> mcst
   where
     setup = do
-      validateTxSkel $ txSkel [paysScript validator () (L.lovelaceValueOf 2_000_000)]
-      validateTxSkel $ txSkel [paysScript validator () (L.lovelaceValueOf 3_000_000)]
+      validateTxSkel def $ txSkel [PaysScript validator () (L.lovelaceValueOf 2_000_000)]
+      validateTxSkel def $ txSkel [PaysScript validator () (L.lovelaceValueOf 3_000_000)]
 
 assertTxSameConstraints :: TxSkel -> TxSkel -> Assertion
 assertTxSameConstraints (TxSkel _ _ actual) (TxSkel _ _ expected) =

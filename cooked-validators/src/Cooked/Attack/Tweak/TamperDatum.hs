@@ -29,7 +29,7 @@ tamperDatumTweak ::
 tamperDatumTweak change = do
   unmodified <-
     mkTweak
-      (paysScriptConstraintsT % paysScriptConstraintTypeP @a % _3)
+      (paysScriptConstraintsT % paysScriptConstraintTypeP @a % _2)
       (const change)
   addLabelTweak TamperDatumLbl
   return unmodified
