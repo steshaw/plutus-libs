@@ -373,8 +373,8 @@ utxosSuchThisAndThat' addrPred datumPred = do
   mapMaybe (fmap assocl . rstr) <$> mapM (\(oref, out) -> (oref,) <$> go oref out) (M.toList ix')
   where
     go :: Pl.TxOutRef -> Pl.TxOut -> MockChainT m (Maybe (Pl.ChainIndexTxOut, Maybe a))
-    go oref out@(Pl.TxOut (Api.TxOut _ _ cDatum _)) = pure (cTxOutToCito out) >>=
-      \case
+    go oref out@(Pl.TxOut (Api.TxOut _ _ cDatum _)) =
+      case cTxOutToCito out of
         Nothing -> pure Nothing
         Just cito -> do
           mDatum <- extractDatum oref cito $ Pl.fromCardanoTxOutDatumHash cDatum
