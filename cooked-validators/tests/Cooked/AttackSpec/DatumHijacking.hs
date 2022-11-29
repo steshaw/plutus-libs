@@ -61,7 +61,7 @@ lockTxSkel :: SpendableOut -> L.TypedValidator MockContract -> TxSkel
 lockTxSkel o v =
   txSkelOpts
     (def {adjustUnbalTx = True})
-    ([SpendsPK o] :=>: [paysScript v FirstLock lockValue])
+    ([paysScript v FirstLock lockValue])
 
 txLock :: MonadBlockChain m => L.TypedValidator MockContract -> m ()
 txLock v = do
@@ -74,7 +74,6 @@ relockTxSkel v o =
   txSkelOpts
     (def {adjustUnbalTx = True})
     ( [SpendsScript v () o]
-        :=>: [paysScript v SecondLock lockValue]
     )
 
 txRelock ::
@@ -128,7 +127,7 @@ carefulValidator =
 
 {-# INLINEABLE mkCarelessValidator #-}
 mkCarelessValidator :: MockDatum -> () -> L.ScriptContext -> Bool
-mkCarelessValidator = mkMockValidator (L.txInfoOutputs . L.scriptContextTxInfo)
+mkCarelessValidator _ _ _ = True
 
 carelessValidator :: L.TypedValidator MockContract
 carelessValidator =
