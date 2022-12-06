@@ -96,6 +96,9 @@ allow-newer:
   ntp-client:base,
   cardano-cli:base,
   cardano-git-rev:base,
+  blockfrost-api:lens,
+  ntp-client:bytestring,
+  ntp-client:time,
   ekg:aeson,
   -- from cardano-wallet
   size-based:template-haskell
