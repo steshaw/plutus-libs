@@ -13,8 +13,8 @@ module Cooked.MockChain.Fee
 where
 
 import Cardano.Api.Shelley qualified as C.Api
+import Cooked.MockChain.Fees qualified as CookedFees
 import Data.Bifunctor (first)
-import GHC.IO.Unsafe (unsafePerformIO)
 import Ledger.Ada (lovelaceValueOf)
 import Ledger.Address (PaymentPubKeyHash)
 import Ledger.Params (EmulatorEra, Params (pProtocolParams))
@@ -33,7 +33,5 @@ estimateTransactionFee params utxo requiredSigners tx = do
   txBodyContent <- first Right $ toCardanoTxBodyContent params requiredSigners tx
   let nkeys = C.Api.estimateTransactionKeyWitnessCount (getCardanoBuildTx txBodyContent)
   txBody <- makeTransactionBody params utxo txBodyContent
-  seq logIt $ case C.Api.evaluateTransactionFee (pProtocolParams params) txBody nkeys 0 of
+  case CookedFees.evaluateTransactionFee (pProtocolParams params) txBody nkeys 0 of
     C.Api.Lovelace fee -> pure $ lovelaceValueOf fee
-  where
-    logIt = unsafePerformIO $ putStrLn "estimateTransactionFee!"

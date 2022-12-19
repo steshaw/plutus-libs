@@ -9,7 +9,9 @@ extra-source-files:
 dependencies:
   - base >= 4.9 && < 5
   - aeson
+  - array
   - bytestring
+  - cardano-binary
   - containers
   - data-default
   - deepseq
@@ -33,15 +35,24 @@ dependencies:
   - prettyprinter
   - scientific
   - streaming
+  - strict-containers
   - text
   - transformers
   - tasty
   - tasty-hunit
   - tasty-quickcheck
   - QuickCheck
-  - cardano-api
+  - cardano-api >= 1.35.3
   - cardano-crypto
+  - cardano-ledger-alonzo
+  - cardano-ledger-babbage
+  - cardano-ledger-byron
+  - cardano-ledger-core
+  - cardano-ledger-shelley
+  - cardano-ledger-shelley-ma
+  - cardano-slotting
   - cardano-wallet-core
+  - ouroboros-consensus
   - memory
   - optics-core
 
