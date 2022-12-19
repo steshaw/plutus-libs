@@ -22,7 +22,7 @@ jobs:
       #   with:
       #     name: plutus-libs
       #     authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
-      
+
     - name: Accessing the cabal cache.
       uses: actions/cache@v2
       with:
@@ -65,28 +65,4 @@ jobs:
 
     - name: Check result
       run: |
-        is_ok=true
-        for proj in "examples" "cooked-validators" "pirouette-plutusir"; do
-          for step in "hpack" "ormolu" "cabal-build" "cabal-test"; do
-            echo "!! [$proj]: output from $step"
-            cat $proj-$step.out
-            res=$(cat $proj-$step.res | cut -d':' -f2)
-            if [[ "$res" != "0" ]]; then 
-              is_ok=false
-            fi
-          done
-        done
-
-        ## Because there will be a lot of tests, we print a summary of the results
-        echo "Summary of results (1 is failure)"
-        for proj in "examples" "cooked-validators" "pirouette-plutusir"; do
-          echo "Summary for: $proj"
-          cat ${proj}-*.res
-        done
-
-        if $is_ok; then
-          exit 0
-        else
-          exit 1
-        fi
-
+        ci/check-result
