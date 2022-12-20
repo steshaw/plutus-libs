@@ -33,5 +33,5 @@ estimateTransactionFee params utxo requiredSigners tx = do
   txBodyContent <- first Right $ toCardanoTxBodyContent params requiredSigners tx
   let nkeys = C.Api.estimateTransactionKeyWitnessCount (getCardanoBuildTx txBodyContent)
   txBody <- makeTransactionBody params utxo txBodyContent
-  case CookedFees.evaluateTransactionFee (pProtocolParams params) txBody nkeys 0 of
+  case CookedFees.evaluateTransactionFee (pProtocolParams params) txBody nkeys of
     C.Api.Lovelace fee -> pure $ lovelaceValueOf fee

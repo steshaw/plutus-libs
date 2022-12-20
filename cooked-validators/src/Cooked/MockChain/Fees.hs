@@ -37,13 +37,8 @@ evaluateTransactionFee ::
   TxBody BabbageEra ->
   -- | The number of Shelley key witnesses
   Word ->
-  -- | The number of Byron key witnesses
-  Word ->
   Lovelace
-evaluateTransactionFee _ _ _ byronwitcount
-  | byronwitcount > 0 =
-    error "evaluateTransactionFee: TODO support Byron key witnesses"
-evaluateTransactionFee pparams txbody keywitcount _byronwitcount =
+evaluateTransactionFee pparams txbody keywitcount =
   seq logEvaluateTransactionFee $
   case makeSignedTransaction [] txbody of
     ShelleyTx era tx -> withLedgerConstraints era (evalShelleyBasedEra era tx)
