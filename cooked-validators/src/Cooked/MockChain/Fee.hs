@@ -9,10 +9,12 @@
 -- | Calculating transaction fees in the emulator.
 module Cooked.MockChain.Fee
   ( estimateTransactionFee,
+    estimateTransactionFeePParams,
   )
 where
 
 import Cardano.Api.Shelley qualified as C.Api
+import Cardano.Ledger.Core (PParams)
 import Cooked.MockChain.Fees qualified as CookedFees
 import Data.Bifunctor (first)
 import Ledger.Ada (lovelaceValueOf)
@@ -22,6 +24,7 @@ import Ledger.Tx (Tx)
 import Ledger.Tx.CardanoAPI (CardanoBuildTx (..), getCardanoBuildTx, toCardanoTxBodyContent)
 import Ledger.Validation (CardanoLedgerError, UTxO (..), makeTransactionBody)
 import Ledger.Value (Value)
+import System.IO.Unsafe (unsafePerformIO)
 
 estimateTransactionFee ::
   Params ->
@@ -30,8 +33,26 @@ estimateTransactionFee ::
   Tx ->
   Either CardanoLedgerError Value
 estimateTransactionFee params utxo requiredSigners tx = do
-  txBodyContent <- first Right $ toCardanoTxBodyContent params requiredSigners tx
+  txBodyContent <- seq scream $ first Right $ toCardanoTxBodyContent params requiredSigners tx
   let nkeys = C.Api.estimateTransactionKeyWitnessCount (getCardanoBuildTx txBodyContent)
   txBody <- makeTransactionBody params utxo txBodyContent
   case CookedFees.evaluateTransactionFee (pProtocolParams params) txBody nkeys of
     C.Api.Lovelace fee -> pure $ lovelaceValueOf fee
+  where
+    scream = unsafePerformIO (putStrLn "\nestimateTransactionFee!\n")
+
+estimateTransactionFeePParams ::
+  PParams (C.Api.ShelleyLedgerEra C.Api.BabbageEra) ->
+  Params ->
+  UTxO EmulatorEra ->
+  [PaymentPubKeyHash] ->
+  Tx ->
+  Either CardanoLedgerError Value
+estimateTransactionFeePParams pparams params utxo requiredSigners tx = do
+  txBodyContent <- seq scream $ first Right $ toCardanoTxBodyContent params requiredSigners tx
+  let nkeys = C.Api.estimateTransactionKeyWitnessCount (getCardanoBuildTx txBodyContent)
+  txBody <- makeTransactionBody params utxo txBodyContent
+  case CookedFees.evaluateTransactionFeePParams pparams txBody nkeys of
+    C.Api.Lovelace fee -> pure $ lovelaceValueOf fee
+  where
+    scream = unsafePerformIO (putStrLn "\nestimateTransactionFeePParams!\n")

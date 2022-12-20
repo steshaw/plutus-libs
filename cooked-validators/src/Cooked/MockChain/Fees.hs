@@ -9,7 +9,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -25,7 +24,6 @@ import Cardano.Api.Shelley (ProtocolParameters, ShelleyLedgerEra, Tx (ShelleyTx)
 import Cardano.Ledger.Core (PParams)
 import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Shelley.API.Wallet qualified as Ledger (evaluateTransactionFee)
-import System.IO.Unsafe (unsafePerformIO)
 import Prelude
 
 -- | Compute the transaction fee for a proposed transaction, with the
@@ -40,9 +38,8 @@ evaluateTransactionFee ::
   Word ->
   Lovelace
 evaluateTransactionFee pparams txbody keywitcount =
-  seq logEvaluateTransactionFee $
-    case makeSignedTransaction [] txbody of
-      ShelleyTx era tx -> evalShelleyBasedEra era tx
+  case makeSignedTransaction [] txbody of
+    ShelleyTx era tx -> evalShelleyBasedEra era tx
   where
     evalShelleyBasedEra ::
       ShelleyBasedEra BabbageEra ->
@@ -58,8 +55,6 @@ evaluateTransactionFee pparams txbody keywitcount =
     babbageToLedgerPParams :: ShelleyBasedEra BabbageEra -> ProtocolParameters -> Ledger.PParams (ShelleyLedgerEra BabbageEra)
     babbageToLedgerPParams = toLedgerPParams
 
-    logEvaluateTransactionFee = unsafePerformIO $ putStrLn "\nevaluateTransactionFee!"
-
 evaluateTransactionFeePParams ::
   PParams (ShelleyLedgerEra BabbageEra) ->
   TxBody BabbageEra ->
@@ -67,9 +62,8 @@ evaluateTransactionFeePParams ::
   Word ->
   Lovelace
 evaluateTransactionFeePParams pparams txbody keywitcount =
-  seq logEvaluateTransactionFee $
-    case makeSignedTransaction [] txbody of
-      ShelleyTx _ tx -> evalShelleyBasedEra tx
+  case makeSignedTransaction [] txbody of
+    ShelleyTx _ tx -> evalShelleyBasedEra tx
   where
     evalShelleyBasedEra ::
       Ledger.Tx (ShelleyLedgerEra BabbageEra) ->
@@ -80,5 +74,3 @@ evaluateTransactionFeePParams pparams txbody keywitcount =
           pparams
           tx
           keywitcount
-
-    logEvaluateTransactionFee = unsafePerformIO $ putStrLn "\nevaluateTransactionFee!"

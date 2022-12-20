@@ -15,7 +15,9 @@
 
 module Cooked.MockChain.Monad.Direct where
 
+import Cardano.Api
 import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Core
 import Control.Applicative
 import Control.Lens hiding (ix)
 import Control.Monad.Except
@@ -38,6 +40,7 @@ import Data.Map.Strict qualified as M
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as S
 import Data.Void
+import Ledger (Params (pProtocolParams))
 import Ledger qualified as Pl
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Pl
@@ -116,12 +119,16 @@ data BalanceStage
 
 data MockChainEnv = MockChainEnv
   { mceParams :: Pl.Params,
+    mcePParams :: PParams (C.ShelleyLedgerEra C.BabbageEra),
     mceSigners :: NE.NonEmpty Wallet
   }
   deriving (Show)
 
 instance Default MockChainEnv where
-  def = MockChainEnv def (wallet 1 NE.:| [])
+  def = MockChainEnv ledgerParams pparams (wallet 1 NE.:| [])
+    where
+      ledgerParams = def
+      pparams = toLedgerPParams ShelleyBasedEraBabbage (pProtocolParams ledgerParams)
 
 -- | The actual 'MockChainT' is a trivial combination of 'StateT' and 'ExceptT'
 newtype MockChainT m a = MockChainT
@@ -469,7 +476,8 @@ setFeeAndValidRange bPol w (Pl.UnbalancedEmulatorTx tx0 reqSigs0 uindex) = do
     calcFee n fee reqSigs cUtxoIndex lparams tx = do
       let tx1 = tx {Pl.txFee = fee}
       attemptedTx <- balanceTxFromAux lparams bPol BalCalcFee w tx1
-      case CookedFee.estimateTransactionFee lparams cUtxoIndex reqSigs attemptedTx of
+      pparams <- asks mcePParams
+      case CookedFee.estimateTransactionFeePParams pparams lparams cUtxoIndex reqSigs attemptedTx of
         -- necessary to capture script failure for failed cases
         Left (Left err@(Pl.Phase2, Pl.ScriptFailure _)) -> throwError $ MCEValidationError err
         Left err -> throwError $ FailWith $ "calcFee: " ++ show err
