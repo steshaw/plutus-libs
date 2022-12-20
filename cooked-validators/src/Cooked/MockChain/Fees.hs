@@ -16,11 +16,13 @@
 -- | Fee calculation
 module Cooked.MockChain.Fees
   ( evaluateTransactionFee,
+    evaluateTransactionFeePParams,
   )
 where
 
 import Cardano.Api hiding (evaluateTransactionFee)
 import Cardano.Api.Shelley (ProtocolParameters, ShelleyLedgerEra, Tx (ShelleyTx), fromShelleyLovelace)
+import Cardano.Ledger.Core (PParams)
 import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Shelley.API.Wallet qualified as Ledger (evaluateTransactionFee)
 import System.IO.Unsafe (unsafePerformIO)
@@ -39,8 +41,8 @@ evaluateTransactionFee ::
   Lovelace
 evaluateTransactionFee pparams txbody keywitcount =
   seq logEvaluateTransactionFee $
-  case makeSignedTransaction [] txbody of
-    ShelleyTx era tx -> evalShelleyBasedEra era tx
+    case makeSignedTransaction [] txbody of
+      ShelleyTx era tx -> evalShelleyBasedEra era tx
   where
     evalShelleyBasedEra ::
       ShelleyBasedEra BabbageEra ->
@@ -55,5 +57,28 @@ evaluateTransactionFee pparams txbody keywitcount =
 
     babbageToLedgerPParams :: ShelleyBasedEra BabbageEra -> ProtocolParameters -> Ledger.PParams (ShelleyLedgerEra BabbageEra)
     babbageToLedgerPParams = toLedgerPParams
+
+    logEvaluateTransactionFee = unsafePerformIO $ putStrLn "\nevaluateTransactionFee!"
+
+evaluateTransactionFeePParams ::
+  PParams (ShelleyLedgerEra BabbageEra) ->
+  TxBody BabbageEra ->
+  -- | The number of Shelley key witnesses
+  Word ->
+  Lovelace
+evaluateTransactionFeePParams pparams txbody keywitcount =
+  seq logEvaluateTransactionFee $
+    case makeSignedTransaction [] txbody of
+      ShelleyTx _ tx -> evalShelleyBasedEra tx
+  where
+    evalShelleyBasedEra ::
+      Ledger.Tx (ShelleyLedgerEra BabbageEra) ->
+      Lovelace
+    evalShelleyBasedEra tx =
+      fromShelleyLovelace $
+        Ledger.evaluateTransactionFee
+          pparams
+          tx
+          keywitcount
 
     logEvaluateTransactionFee = unsafePerformIO $ putStrLn "\nevaluateTransactionFee!"
