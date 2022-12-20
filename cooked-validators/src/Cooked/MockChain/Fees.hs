@@ -6,14 +6,12 @@
 --
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 -- | Fee calculation
 module Cooked.MockChain.Fees
@@ -22,7 +20,6 @@ module Cooked.MockChain.Fees
 where
 
 import Cardano.Api hiding (BalancedTxBody, MinimumUTxOError, ScriptErrorEvaluationFailed, ScriptErrorExecutionUnitsOverflow, ScriptErrorMissingCostModel, ScriptErrorMissingScript, ScriptErrorMissingTxIn, ScriptErrorNotPlutusWitnessedTxIn, ScriptErrorRedeemerPointsToUnknownScriptHash, ScriptErrorTxInWithoutDatum, ScriptErrorWrongDatum, ScriptExecutionError, TransactionValidityCostModelError, TransactionValidityError, TransactionValidityIntervalError, TransactionValidityTranslationError, TxBodyError, TxBodyErrorAdaBalanceNegative, TxBodyErrorAdaBalanceTooSmall, TxBodyErrorAssetBalanceWrong, TxBodyErrorAutoBalance, TxBodyErrorByronEraNotSupported, TxBodyErrorMinUTxOMissingPParams, TxBodyErrorMinUTxONotMet, TxBodyErrorMissingParamMinUTxO, TxBodyErrorNonAdaAssetsUnbalanced, TxBodyErrorScriptWitnessIndexMissingFromExecUnitsMap, TxBodyErrorValidityInterval, TxBodyScriptBadScriptValidity, TxBodyScriptExecutionError, calculateMinimumUTxO, estimateTransactionFee, estimateTransactionKeyWitnessCount, evaluateTransactionBalance, evaluateTransactionExecutionUnits, evaluateTransactionFee, mapTxScriptWitnesses, transactionFee) --(IsShelleyBasedEra, Tx, Lovelace (Lovelace), ShelleyBasedEra (..), ByronEra, NetworkId, TxBody, TxBodyContent (TxBodyContent), BuildTx)
-import Cardano.Api.Byron (Tx (ByronTx))
 import Cardano.Api.Shelley (ProtocolParameters, ShelleyLedgerEra, Tx (ShelleyTx), fromShelleyLovelace)
 import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Shelley.API qualified as Ledger (CLI)
@@ -36,10 +33,8 @@ import Prelude
 --
 -- TODO: we need separate args for Shelley vs Byron key sigs
 evaluateTransactionFee ::
-  forall era.
-  IsShelleyBasedEra era =>
   ProtocolParameters ->
-  TxBody era ->
+  TxBody BabbageEra ->
   -- | The number of Shelley key witnesses
   Word ->
   -- | The number of Byron key witnesses
@@ -51,24 +46,21 @@ evaluateTransactionFee _ _ _ byronwitcount
 evaluateTransactionFee pparams txbody keywitcount _byronwitcount =
   seq logEvaluateTransactionFee $
   case makeSignedTransaction [] txbody of
-    ByronTx {} -> case shelleyBasedEra :: ShelleyBasedEra era of
-    --TODO: we could actually support Byron here, it'd be different but simpler
-
     ShelleyTx era tx -> withLedgerConstraints era (evalShelleyBasedEra era tx)
   where
     evalShelleyBasedEra ::
-      forall ledgerera.
-      ShelleyLedgerEra era ~ ledgerera =>
-      Ledger.CLI ledgerera =>
-      ShelleyBasedEra era ->
-      Ledger.Tx ledgerera ->
+      ShelleyBasedEra BabbageEra ->
+      Ledger.Tx (ShelleyLedgerEra BabbageEra) ->
       Lovelace
     evalShelleyBasedEra era tx =
       fromShelleyLovelace $
         Ledger.evaluateTransactionFee
-          (toLedgerPParams era pparams)
+          (babbageToLedgerPParams era pparams)
           tx
           keywitcount
+
+    babbageToLedgerPParams :: ShelleyBasedEra BabbageEra -> ProtocolParameters -> Ledger.PParams (ShelleyLedgerEra BabbageEra)
+    babbageToLedgerPParams = toLedgerPParams
 
     -- Conjure up all the necessary class instances and evidence
     withLedgerConstraints ::
@@ -85,3 +77,4 @@ evaluateTransactionFee pparams txbody keywitcount _byronwitcount =
     withLedgerConstraints ShelleyBasedEraBabbage f = f
 
     logEvaluateTransactionFee = unsafePerformIO $ putStrLn "\nevaluateTransactionFee!"
+
