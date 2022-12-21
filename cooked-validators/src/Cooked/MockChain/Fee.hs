@@ -23,7 +23,6 @@ import Ledger.Tx (Tx)
 import Ledger.Tx.CardanoAPI (CardanoBuildTx (..), getCardanoBuildTx, toCardanoTxBodyContent)
 import Ledger.Validation (CardanoLedgerError, UTxO (..), makeTransactionBody)
 import Ledger.Value (Value)
-import System.IO.Unsafe (unsafePerformIO)
 
 estimateTransactionFeePParams ::
   PParams (C.Api.ShelleyLedgerEra C.Api.BabbageEra) ->
@@ -33,10 +32,8 @@ estimateTransactionFeePParams ::
   Tx ->
   Either CardanoLedgerError Value
 estimateTransactionFeePParams pparams params utxo requiredSigners tx = do
-  txBodyContent <- seq scream $ first Right $ toCardanoTxBodyContent params requiredSigners tx
+  txBodyContent <- first Right $ toCardanoTxBodyContent params requiredSigners tx
   let nkeys = C.Api.estimateTransactionKeyWitnessCount (getCardanoBuildTx txBodyContent)
   txBody <- makeTransactionBody params utxo txBodyContent
   case CookedFees.evaluateTransactionFeePParams pparams txBody nkeys of
     C.Api.Lovelace fee -> pure $ lovelaceValueOf fee
-  where
-    scream = unsafePerformIO (putStrLn "\nestimateTransactionFeePParams!\n")
