@@ -8,8 +8,7 @@
 
 -- | Calculating transaction fees in the emulator.
 module Cooked.MockChain.Fee
-  ( estimateTransactionFee,
-    estimateTransactionFeePParams,
+  ( estimateTransactionFeePParams,
   )
 where
 
@@ -19,27 +18,12 @@ import Cooked.MockChain.Fees qualified as CookedFees
 import Data.Bifunctor (first)
 import Ledger.Ada (lovelaceValueOf)
 import Ledger.Address (PaymentPubKeyHash)
-import Ledger.Params (EmulatorEra, Params (pProtocolParams))
+import Ledger.Params (EmulatorEra, Params)
 import Ledger.Tx (Tx)
 import Ledger.Tx.CardanoAPI (CardanoBuildTx (..), getCardanoBuildTx, toCardanoTxBodyContent)
 import Ledger.Validation (CardanoLedgerError, UTxO (..), makeTransactionBody)
 import Ledger.Value (Value)
 import System.IO.Unsafe (unsafePerformIO)
-
-estimateTransactionFee ::
-  Params ->
-  UTxO EmulatorEra ->
-  [PaymentPubKeyHash] ->
-  Tx ->
-  Either CardanoLedgerError Value
-estimateTransactionFee params utxo requiredSigners tx = do
-  txBodyContent <- seq scream $ first Right $ toCardanoTxBodyContent params requiredSigners tx
-  let nkeys = C.Api.estimateTransactionKeyWitnessCount (getCardanoBuildTx txBodyContent)
-  txBody <- makeTransactionBody params utxo txBodyContent
-  case CookedFees.evaluateTransactionFee (pProtocolParams params) txBody nkeys of
-    C.Api.Lovelace fee -> pure $ lovelaceValueOf fee
-  where
-    scream = unsafePerformIO (putStrLn "\nestimateTransactionFee!\n")
 
 estimateTransactionFeePParams ::
   PParams (C.Api.ShelleyLedgerEra C.Api.BabbageEra) ->
